@@ -148,7 +148,7 @@ export function merchantKeyOf(name: string): string {
 export function classify(input: ClassifyInput, ctx: ClassifyContext = {}): Classification {
   const dir = input.direction === 'income' ? 'in' : 'out';
   const name = merchantDisplay(input);
-  // a bare "Surname Name" (Georgian or Latin) with no card/MCC data is a person transfer too ("უბილავა ლულა")
+  // a bare "Surname Name" (Georgian or Latin) with no card/MCC data is a person transfer too ("გვარი სახელი")
   const bareName = !input.counterparty && !input.mcc ? [input.merchant, input.description].find((x) => isBarePersonName(x)) : undefined;
   const isPerson = (!input.merchant && isPersonName(input.counterparty)) || !!bareName;
   const own = !!(input.counterparty && ctx.ownerNames?.some((n) => sameName(n, input.counterparty))) || !!(input.counterpartyAccount && ctx.ownAccounts?.has(input.counterpartyAccount));
