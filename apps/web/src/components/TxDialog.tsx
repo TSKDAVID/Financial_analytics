@@ -54,7 +54,7 @@ export default function TxDialog({ open, onClose, tx }: { open: boolean; onClose
             {f.rate_manual && <Input type="number" step="0.0001" placeholder={t('tx.rate')} value={f.rate ?? ''} onChange={(e) => set({ rate: Number(e.target.value) })} />}
           </div>)}
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t('common.date')}><Input type="date" required value={f.date} onChange={(e) => set({ date: e.target.value })} /></Field>
+          <Field label={t('common.date')} hint={t('tx.dateHint')}><Input type="date" required value={f.date} onChange={(e) => set({ date: e.target.value })} /></Field>
           <Field label={t('common.account')}><AccountSelect value={f.account_id} onChange={(v) => set({ account_id: v })} /></Field>
         </div>
         {f.kind === 'transfer'

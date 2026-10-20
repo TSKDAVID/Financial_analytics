@@ -21,7 +21,7 @@ describe('account balance as of a date', () => {
     const id = Number(db.prepare("INSERT INTO accounts (name, type, currency, opening_balance, opening_date) VALUES ('Card','card','GEL',100,'2026-03-10')").run().lastInsertRowid);
     tx(db, { kind: 'expense', amount: 500, date: '2026-02-07', account_id: id }); // back-dated bill: already inside the entered balance
     tx(db, { kind: 'expense', amount: 30, date: '2026-03-12', account_id: id });
-    tx(db, { kind: 'income', amount: 50, date: '2026-03-10', account_id: id });
+    tx(db, { kind: 'income', amount: 50, date: '2026-03-11', account_id: id });
     expect(accountBalances(db).find((a: any) => a.id === id)!.balance_gel).toBe(120);
   });
   it('new accounts default to today', () => {
@@ -89,5 +89,40 @@ describe('import fix', () => {
     expect(sum('income')).toBe(360); expect(sum('expense')).toBe(101);
     expect((people(db) as any).people.map((p: any) => [p.sent, p.received])).toEqual([[100, 60], [70, 70]]); // ranked by sent; the 70/70 loan is netted out
     expect(await migrateAnalyticsFix(db)).toBeFalsy(); // fresh installs: already correct, migration is a no-op the second time
+  });
+});
+
+import { reconcileRecurring, restoreReconciled } from '../src/reconcile';
+import { transactionDate } from '../src/statements/parse';
+describe('v1.2.2 balances, recurring duplicates, transaction dates', () => {
+  it('balance entered now ignores same-day items added before it, unconfirmed auto-posts and older dates', () => {
+    const db = openDb(':memory:');
+    const id = Number(db.prepare("INSERT INTO accounts (name, type, currency, opening_balance, opening_date, opening_at) VALUES ('BOG','bank','GEL',-5.89,'2026-10-20','2026-10-20 10:00:00')").run().lastInsertRowid);
+    db.prepare("INSERT INTO recurring (id, kind, name, amount, currency, unit, interval, start_date) VALUES (1,'income','Pay',450,'GEL','week',2,'2026-10-21')").run();
+    const add = (o: any) => db.prepare("INSERT INTO transactions (kind, amount, currency, amount_gel, date, account_id, recurring_id, confirmed, created_at) VALUES (?,?,?,?,?,?,?,?,?)").run(o.kind, o.a, 'GEL', o.a, o.date, id, o.rec ?? null, o.conf ?? 1, o.at);
+    add({ kind: 'income', a: 450, date: '2026-10-20', rec: null, at: '2026-10-20 09:00:00' }); // added earlier the same day: already in the balance
+    add({ kind: 'income', a: 450, date: '2026-10-21', rec: 1, conf: 0, at: '2026-10-20 11:00:00' }); // planned by a rule
+    add({ kind: 'expense', a: 9, date: '2026-09-01', at: '2026-10-20 11:00:00' }); // back-dated
+    expect(accountBalances(db).find((a: any) => a.id === id)!.balance_gel).toBe(-5.89);
+    add({ kind: 'expense', a: 4, date: '2026-10-20', at: '2026-10-20 10:00:01' }); // a real payment after entering the balance
+    expect(accountBalances(db).find((a: any) => a.id === id)!.balance_gel).toBe(-9.89);
+    db.prepare("UPDATE accounts SET opening_balance = 1 WHERE id = ?").run(id); // re-entering the balance re-anchors it
+    expect(accountBalances(db).find((a: any) => a.id === id)!.balance_gel).toBe(1);
+  });
+  it('one imported payment covering two planned rent entries removes them, undoably', () => {
+    const db = openDb(':memory:'); const rent = cat(db, 'rent');
+    const rid = Number(db.prepare("INSERT INTO recurring (kind, name, amount, currency, category_id, unit, interval, start_date) VALUES ('expense','Rent',500,'GEL',?,'month',1,'2026-09-07')").run(rent).lastInsertRowid);
+    for (const d of ['2026-09-07', '2026-10-07']) db.prepare("INSERT INTO transactions (kind, amount, currency, amount_gel, date, category_id, recurring_id, confirmed) VALUES ('expense',500,'GEL',500,?,?,?,0)").run(d, rent, rid);
+    const b = Number(db.prepare("INSERT INTO import_batches (filename, bank, currency, row_count) VALUES ('s.pdf','TBC Bank','GEL',1)").run().lastInsertRowid);
+    const imp = Number(db.prepare("INSERT INTO transactions (kind, amount, currency, amount_gel, date, category_id, import_batch_id) VALUES ('expense',1000,'GEL',1000,'2026-10-07',?,?)").run(rent, b).lastInsertRowid);
+    expect(reconcileRecurring(db)).toMatchObject({ removed: 2, payments: 1 });
+    expect(db.prepare("SELECT SUM(amount_gel) FROM transactions WHERE category_id = ?").pluck().get(rent)).toBe(1000);
+    expect(restoreReconciled(db, [imp]).restored).toBe(2);
+    expect(db.prepare("SELECT SUM(amount_gel) FROM transactions WHERE category_id = ?").pluck().get(rent)).toBe(2000);
+  });
+  it('uses the transaction date printed in the text, not the booking date', () => {
+    expect(transactionDate('POS - Shop, Oct 05 2026 12:01, MCC:5411', '2026-10-07')).toBe('2026-10-05');
+    expect(transactionDate('გადახდა 05.10.2026', '2026-10-06')).toBe('2026-10-05');
+    expect(transactionDate('contract 01.01.2020', '2026-10-06')).toBe('2026-10-06');
   });
 });

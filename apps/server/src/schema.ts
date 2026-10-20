@@ -1,5 +1,6 @@
+import { reconcileRecurring, ensureReconcileTable } from './reconcile';
 // Pure schema + settings helpers, shared by the Node server and the offline Android app (no Node imports here).
-import { migrateImports, migrateAnalyticsFix } from './statements/service';
+import { migrateImports, migrateAnalyticsFix, migrateTransactionDates } from './statements/service';
 import { migrateCredit } from './credit/service';
 import { migrateSync } from './sync/track';
 import { migrateTerms } from './terms/service';
@@ -117,7 +118,9 @@ export function initDb(db: DB) {
   migrateBillTracking(db);
   migrateTerms(db);
   migrateSync(db);
+  migrateTransactionDates(db);
   migrateAnalyticsFix(db);
+  migrateRecurringReconcile(db);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
   if (!getSetting(db, 'minBalanceMigrated')) { if (getSetting(db, 'minBalance') === '300') setSetting(db, 'minBalance', ''); setSetting(db, 'minBalanceMigrated', '1'); }
   return db;
@@ -144,10 +147,26 @@ export function migrateLoans(db: DB) {
 }
 
 /** v1.5: accounts get an opening date (opening balance = balance on that day). Existing accounts: their creation day. */
+/** v1.2.2: remove auto-posted recurring entries that duplicate an imported statement payment (undoable). */
+export function migrateRecurringReconcile(db: DB) {
+  ensureReconcileTable(db);
+  if (getSetting(db, 'recurringReconcileV1')) return;
+  const r = reconcileRecurring(db);
+  setSetting(db, 'recurringReconcileV1', JSON.stringify({ at: new Date().toISOString(), ...r }));
+}
 export function migrateAccountOpening(db: DB) {
   const cols = (db.prepare('PRAGMA table_info(accounts)').all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes('opening_date')) { db.exec('ALTER TABLE accounts ADD COLUMN opening_date TEXT'); db.exec("UPDATE accounts SET opening_date = date(created_at, 'localtime')"); }
   db.exec(`CREATE TRIGGER IF NOT EXISTS accounts_opening_date AFTER INSERT ON accounts WHEN NEW.opening_date IS NULL BEGIN UPDATE accounts SET opening_date = date('now','localtime') WHERE id = NEW.id; END`);
+  // v1.2.2: the balance is "as of" the exact moment it was entered, not just the day
+  if (!cols.includes('opening_at')) { db.exec('ALTER TABLE accounts ADD COLUMN opening_at TEXT'); db.exec('UPDATE accounts SET opening_at = created_at'); }
+  db.exec(`CREATE TRIGGER IF NOT EXISTS accounts_opening_at AFTER INSERT ON accounts WHEN NEW.opening_at IS NULL BEGIN UPDATE accounts SET opening_at = datetime('now') WHERE id = NEW.id; END`);
+  // typing a new balance re-anchors it to now (unless a date was given at the same time)
+  db.exec(`CREATE TRIGGER IF NOT EXISTS accounts_opening_reanchor AFTER UPDATE OF opening_balance ON accounts WHEN NEW.opening_balance IS NOT OLD.opening_balance
+    BEGIN UPDATE accounts SET opening_at = datetime('now'), opening_date = CASE WHEN NEW.opening_date IS OLD.opening_date THEN date('now','localtime') ELSE NEW.opening_date END WHERE id = NEW.id; END`);
+  // auto-posted recurring entries are planned, not confirmed payments: they never move an account balance until confirmed
+  const tcols = (db.prepare('PRAGMA table_info(transactions)').all() as { name: string }[]).map((c) => c.name);
+  if (!tcols.includes('confirmed')) { db.exec('ALTER TABLE transactions ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 1'); db.exec('UPDATE transactions SET confirmed = 0 WHERE recurring_id IS NOT NULL AND import_batch_id IS NULL'); }
 }
 
 export function seedBuiltins(db: DB) {

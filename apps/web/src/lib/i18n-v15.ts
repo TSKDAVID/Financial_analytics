@@ -10,6 +10,7 @@ export const EN_15: Record<string, string> = {
   'ppl.sort': 'Sort by', 'ppl.sort.sent': 'Sent most', 'ppl.sort.received': 'Received most', 'ppl.sort.total': 'Total', 'ppl.sort.net': 'Balance', 'ppl.sent': 'Sent', 'ppl.received': 'Received',
   'fix.title': 'Analytics corrected', 'fix.body': 'Transfers between your own BOG/TBC accounts ({pairs} pairs) were counted as both spending and income, and money that went to people and came back counted as P&L. That is fixed: income {bi} → {ai} ₾, expenses {be} → {ae} ₾ (all history). Everything is reversible from Import.', 'fix.ok': 'Got it',
   'acc.openingDate': 'Balance as of', 'acc.openingDateHint': 'Only transactions after this date change the balance.',
+  'tx.dateHint': 'The day it really happened. Dates before an account’s “balance as of” don’t change that balance.', 'rec.startHint': 'Date of the first real payment. Auto-posted entries are planned: they don’t move account balances until you confirm or edit them.',
   'imp.autoConfirmNote': 'Approving also confirms suggested own-account transfers with ≥ 90% match.',
 };
 export const KA_15: Record<string, string> = {
@@ -23,5 +24,6 @@ export const KA_15: Record<string, string> = {
   'ppl.sort': 'დალაგება', 'ppl.sort.sent': 'ყველაზე მეტი გაგზავნილი', 'ppl.sort.received': 'ყველაზე მეტი მიღებული', 'ppl.sort.total': 'ჯამი', 'ppl.sort.net': 'ბალანსი', 'ppl.sent': 'გაგზავნილი', 'ppl.received': 'მიღებული',
   'fix.title': 'ანალიტიკა გასწორდა', 'fix.body': 'BOG/TBC საკუთარ ანგარიშებს შორის გადარიცხვები ({pairs} წყვილი) ითვლებოდა ხარჯადაც და შემოსავლადაც, ადამიანებთან გაგზავნილ-დაბრუნებული თანხაც. გასწორდა: შემოსავალი {bi} → {ai} ₾, ხარჯი {be} → {ae} ₾ (მთელი ისტორია). ყველაფერი შექცევადია Import-იდან.', 'fix.ok': 'გასაგებია',
   'acc.openingDate': 'ბალანსი თარიღისთვის', 'acc.openingDateHint': 'ბალანსს ცვლის მხოლოდ ამ თარიღის შემდეგი ტრანზაქციები.',
+  'tx.dateHint': 'რეალური თარიღი. ანგარიშის „ბალანსი თარიღისთვის“-მდე თარიღები ბალანსს არ ცვლის.', 'rec.startHint': 'პირველი რეალური გადახდის თარიღი. ავტომატური ჩანაწერები დაგეგმილია: ბალანსს არ ცვლის, სანამ არ დაადასტურებთ.',
   'imp.autoConfirmNote': 'დამტკიცება ასევე ადასტურებს ≥ 90% დამთხვევის საკუთარ გადარიცხვებს.',
 };

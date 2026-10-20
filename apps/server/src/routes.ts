@@ -137,8 +137,10 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
     const merged = { ...old, ...t, tags: t.tags ?? JSON.parse(old.tags) };
     const rate = t.rate_manual && t.rate ? t.rate : t.currency || t.date ? (await getRate(db, merged.currency, merged.date)).rate : old.rate;
     upsert(db, 'transactions', { ...t, rate, rate_manual: t.rate_manual, amount_gel: Math.round(merged.amount * rate * 100) / 100 }, tid);
+    db.prepare('UPDATE transactions SET confirmed = 1 WHERE id = ?').run(tid); // you reviewed it: a real payment now
     return db.prepare('SELECT * FROM transactions WHERE id = ?').get(tid);
   });
+  app.post('/api/transactions/:id/confirm', async (req) => { const tid = parse(id, P(req).id); db.prepare('UPDATE transactions SET confirmed = 1 WHERE id = ?').run(tid); return db.prepare('SELECT * FROM transactions WHERE id = ?').get(tid); });
   app.delete('/api/transactions/:id', async (req) => { const tid = parse(id, P(req).id); db.prepare('UPDATE bills SET paid = 0, paid_date = NULL, transaction_id = NULL WHERE transaction_id = ?').run(tid); db.prepare('DELETE FROM transactions WHERE id = ?').run(tid); return { ok: true }; });
   app.post('/api/transactions/bulk', async (req) => {
     const { ids, action, patch } = parse(z.object({ ids: z.array(id).min(1).max(5000), action: z.enum(['delete', 'update', 'addTag', 'removeTag']), patch: z.object({ category_id: optId, account_id: optId, kind: z.enum(['income', 'expense']).optional(), date: date.optional(), tag: z.string().optional(), notes: z.string().optional() }).default({}) }), req.body);

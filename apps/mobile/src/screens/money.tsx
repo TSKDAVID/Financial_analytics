@@ -85,7 +85,8 @@ export function TxForm({ nav, params }: ScreenProps) {
     <Seg value={f.kind} onChange={(k) => set({ kind: k })} options={[{ value: 'expense', label: 'Expense' }, { value: 'income', label: 'Income' }, { value: 'transfer', label: 'Transfer' }]} />
     <NumInput label="Amount" value={f.amount} onChange={(v) => set({ amount: v })} style={{ fontSize: 26, fontWeight: '700' }} autoFocus={!t0} />
     <CurrencyPick value={f.currency} onChange={(v) => set({ currency: v })} />
-    <Input label="Date (YYYY-MM-DD)" value={f.date} onChangeText={(v) => set({ date: v })} />
+    <Input label="Date (YYYY-MM-DD)" hint="The day it really happened. Dates before an account's balance date don't change that balance." value={f.date} onChangeText={(v) => set({ date: v })} />
+    <View style={{ flexDirection: 'row', gap: 6 }}>{[0, 1, 7].map((n) => { const d = new Date(Date.now() - n * 864e5 - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10); return <Chip key={n} label={n === 0 ? 'Today' : n === 1 ? 'Yesterday' : 'Week ago'} active={f.date === d} onPress={() => set({ date: d })} />; })}</View>
     <Input label="Description" value={f.description ?? ''} onChangeText={(v) => set({ description: v })} placeholder="e.g. Carrefour" />
     <AccountPick value={f.account_id} onChange={(v) => set({ account_id: v })} label={f.kind === 'transfer' ? 'From account' : 'Account'} />
     {f.kind === 'transfer' ? <AccountPick value={f.to_account_id} onChange={(v) => set({ to_account_id: v })} label="To account" /> : <CategoryPick value={f.category_id} onChange={(v) => set({ category_id: v })} kind={f.kind} />}

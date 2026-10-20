@@ -2,7 +2,7 @@
   "expo": {
     "name": "Financial Analytics",
     "slug": "financial-analytics",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -23,7 +23,7 @@
         "POST_NOTIFICATIONS",
         "RECEIVE_BOOT_COMPLETED"
       ],
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/favicon.png"

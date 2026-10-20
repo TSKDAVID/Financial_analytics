@@ -1,3 +1,4 @@
+import { importedMatch } from './reconcile';
 import {
   addDays, addMonths, amortize, balanceAsOf, monthKey, occurrences, startOfMonth, endOfMonth, todayISO, nextOccurrence,
   perMonthFactor, type RecurringFlow, type FreqUnit, type LoanInput, mean, stdev,
@@ -49,7 +50,9 @@ export async function materialize(db: DB, today = todayISO()) {
     const dates = occurrences({ unit: r.unit, interval: r.interval, start: r.start_date, end: r.end_date, count: r.count }, from, today);
     for (const d of dates) {
       try {
-        await insertTransaction(db, { kind: r.kind, amount: r.amount, currency: r.currency, date: d, account_id: r.account_id, category_id: r.category_id, description: r.name, notes: r.notes, tags: r.tags, recurring_id: r.id });
+        // the real payment is already imported from a statement: don't post the planned one on top
+        if (importedMatch(db, r.kind, r.category_id, r.amount * (latestRates(db)[r.currency] ?? 1), d)) { db.prepare('UPDATE recurring SET generated_until = ? WHERE id = ?').run(d, r.id); continue; }
+        await insertTransaction(db, { kind: r.kind, amount: r.amount, currency: r.currency, date: d, account_id: r.account_id, category_id: r.category_id, description: r.name, notes: r.notes, tags: r.tags, recurring_id: r.id }).then((id) => db.prepare('UPDATE transactions SET confirmed = 0 WHERE id = ?').run(id));
       } catch { break; /* missing rate offline: retry later */ }
       db.prepare('UPDATE recurring SET generated_until = ? WHERE id = ?').run(d, r.id);
     }
@@ -115,10 +118,14 @@ export function accountBalances(db: DB) {
   const rates = latestRates(db);
   // the opening balance is the balance ON the opening date: only transactions from that day on move it
   // (otherwise back-dated history — imported or auto-posted — would be counted twice)
+  // the entered balance already contains everything up to the moment it was typed in: count only later-dated items, or
+  // same-day items added after that moment (never imported statement rows of that day), and never unconfirmed auto-posts
+  const after = `(a.opening_date IS NULL OR t.date > a.opening_date OR (t.date = a.opening_date AND t.import_batch_id IS NULL AND (a.opening_at IS NULL OR t.created_at > a.opening_at)))
+    AND NOT (t.recurring_id IS NOT NULL AND t.confirmed = 0)`;
   const flows = db.prepare(`SELECT t.account_id AS id, SUM(CASE WHEN t.kind='income' THEN t.amount_gel WHEN t.kind IN ('expense','transfer') THEN -t.amount_gel END) AS gel
-    FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.opening_date IS NULL OR t.date >= a.opening_date GROUP BY t.account_id`).all() as { id: number; gel: number }[];
+    FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE ${after} GROUP BY t.account_id`).all() as { id: number; gel: number }[];
   const inflow = db.prepare(`SELECT t.to_account_id AS id, SUM(t.amount_gel) AS gel FROM transactions t JOIN accounts a ON a.id = t.to_account_id
-    WHERE t.kind='transfer' AND (a.opening_date IS NULL OR t.date >= a.opening_date) GROUP BY t.to_account_id`).all() as { id: number; gel: number }[];
+    WHERE t.kind='transfer' AND ${after} GROUP BY t.to_account_id`).all() as { id: number; gel: number }[];
   const fm = new Map(flows.map((f) => [f.id, f.gel])), im = new Map(inflow.map((f) => [f.id, f.gel]));
   return accounts.map((a) => {
     const rate = rates[a.currency] ?? 1;

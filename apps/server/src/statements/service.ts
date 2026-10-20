@@ -1,3 +1,5 @@
+import { reconcileRecurring, restoreReconciled } from '../reconcile';
+import { transactionDate } from './parse';
 import { classify, isNonPL, kindDirection, detectRecurring, addDays, matchTransfers, ibanBank, destinationBank, groupPeople, type TxKind, type Leg, type MatchOpts } from '@fa/core';
 import { getSetting, setSetting } from '../schema';
 import type { DB } from '../schema';
@@ -88,11 +90,13 @@ export function stageParsed(db: DB, filename: string, parsed: ParseResult, accou
       parsed.verification ? JSON.stringify({ totals: parsed.verification, dailyChecks: parsed.dailyChecks ?? 0, runningChecks: parsed.runningChecks ?? 0, mismatches: parsed.dailyMismatches ?? 0 }) : null).lastInsertRowid);
   const ins = db.prepare(`INSERT INTO import_rows (batch_id, idx, date, description, merchant, amount, currency, kind, category_id, confidence, source, subscription, account_id, raw,
     tx_kind, why, mcc, op_type, card, counterparty, counterparty_account, merchant_key, time, own, person) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const r of parsed.rows) { const d = transactionDate(r.raw ?? '', r.date); if (d !== r.date) { (r as any).booked = r.date; r.date = d; } }
   db.transaction(() => parsed.rows.forEach((r, i) => {
     const c = classify({ ...r, direction: r.kind }, ctx);
     ins.run(batchId, i, r.date, r.description, c.merchantName, r.amount, r.currency, r.kind, categoryIdFor(c, r.kind, cats), c.confidence, c.source, c.subscription ? 1 : 0, accountId, r.raw,
       c.kind, c.why, r.mcc ?? null, r.opType ?? null, r.card ?? null, r.counterparty ?? null, r.counterpartyAccount ?? null, c.merchantKey, r.time ?? null, c.own ? 1 : 0, c.counterpartyIsPerson ? 1 : 0);
   }))();
+  for (const [i, r] of parsed.rows.entries()) if ((r as any).booked) db.prepare('UPDATE import_rows SET booked_date = ? WHERE batch_id = ? AND idx = ?').run((r as any).booked, batchId, i);
   detectDuplicates(db, batchId);
   rematch(db);
   return batchId;
@@ -375,6 +379,7 @@ export async function approve(db: DB, batchId: number, rowIds?: number[]) {
   }
   for (const id of touched) refreshStatus(db, id);
   refreshPeopleNetting(db);
+  reconcileRecurring(db); // planned recurring entries now covered by an imported payment
   return { approved: n, status: refreshStatus(db, batchId) };
 }
 
@@ -389,6 +394,7 @@ export function revert(db: DB, batchId: number) {
       db.prepare('UPDATE import_rows SET transaction_id = NULL WHERE batch_id = ? AND transaction_id = ?').run(batchId, p.tx);
     }
     const ids = db.prepare('SELECT id FROM transactions WHERE import_batch_id = ?').pluck().all(batchId) as number[];
+    restoreReconciled(db, ids); // planned entries this import replaced come back
     // pairs re-posted after approval: undo them on the partner side, which may belong to another import
     for (const m of db.prepare("SELECT * FROM import_matches WHERE status = 'confirmed'").all() as any[]) {
       const legs = [legTx(db, m.out_row_id, m.out_tx_id), legTx(db, m.in_row_id, m.in_tx_id)];
@@ -503,3 +509,16 @@ export function clusters(db: DB, batchId: number) {
 }
 function group2<T>(a: T[], k: (x: T) => string) { const m = new Map<string, T[]>(); for (const x of a) { const key = k(x); m.set(key, [...(m.get(key) ?? []), x]); } return m; }
 const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** v1.2.2: imported card payments get their real transaction date instead of the bank's booking date (old date kept in booked_date). */
+export function migrateTransactionDates(db: DB) {
+  const cols = (db.prepare('PRAGMA table_info(import_rows)').all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes('booked_date')) db.exec('ALTER TABLE import_rows ADD COLUMN booked_date TEXT');
+  if (getSetting(db, 'txDatesV1')) return;
+  const rows = db.prepare('SELECT id, date, raw, transaction_id FROM import_rows WHERE booked_date IS NULL AND raw IS NOT NULL').all() as any[];
+  let n = 0;
+  db.transaction(() => { for (const r of rows) { const d = transactionDate(r.raw, r.date); if (d === r.date) continue;
+    db.prepare('UPDATE import_rows SET booked_date = date, date = ? WHERE id = ?').run(d, r.id);
+    if (r.transaction_id) db.prepare('UPDATE transactions SET date = ? WHERE id = ? AND date = ?').run(d, r.transaction_id, r.date); n++; } })();
+  setSetting(db, 'txDatesV1', JSON.stringify({ at: new Date().toISOString(), redated: n }));
+}

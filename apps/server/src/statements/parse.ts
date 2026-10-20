@@ -128,3 +128,14 @@ export function parseStatement(lines: Line[]): ParseResult {
   const dates = rows.map((r) => r.date).sort();
   return { bank, format: 'generic', currency, rows, periodFrom: dates[0] ?? null, periodTo: dates[dates.length - 1] ?? null, warnings };
 }
+
+const MON: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+/** Banks list card payments on the booking day; the real transaction date is printed in the text
+ *  ("… Oct 05 2026 …" or "05.10.2026"). Use it when it is 0–14 days before the booking date. */
+export function transactionDate(raw: string, booked: string): string {
+  const m = raw.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})\b/i); const n = raw.match(/\b(\d{2})[./](\d{2})[./](\d{4})\b/);
+  const d = m ? `${m[3]}-${String(MON[m[1].toLowerCase()]).padStart(2, '0')}-${m[2].padStart(2, '0')}` : n ? `${n[3]}-${n[2]}-${n[1]}` : null;
+  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d))) return booked;
+  const days = (Date.parse(booked) - Date.parse(d)) / 864e5;
+  return days > 0 && days <= 14 ? d : booked;
+}
