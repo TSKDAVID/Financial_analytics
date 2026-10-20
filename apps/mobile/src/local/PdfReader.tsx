@@ -36,9 +36,10 @@ export function bytesToB64(u: Uint8Array): string {
 }
 
 export function PdfReader() {
-  const ref = useRef<WebView>(null);
+  const ref = useRef<any>(null);
+  const WV = WebView as any;
   const pending = useRef(new Map<string, { res: (p: RawItem[][]) => void; rej: (e: Error) => void }>());
-  const ready = useRef<Promise<void>>(); const markReady = useRef<() => void>();
+  const ready = useRef<Promise<void> | null>(null); const markReady = useRef<(() => void) | null>(null);
   if (!ready.current) ready.current = new Promise((r) => { markReady.current = r; });
   useEffect(() => {
     setPdfItemExtractor(async (data) => {
@@ -48,7 +49,7 @@ export function PdfReader() {
     });
   }, []);
   return <View style={{ width: 0, height: 0, position: 'absolute' }} pointerEvents="none">
-    <WebView ref={ref} source={{ html: HTML }} originWhitelist={['*']} javaScriptEnabled onMessage={(e) => {
+    <WV ref={ref} source={{ html: HTML }} originWhitelist={['*']} javaScriptEnabled onMessage={(e: any) => {
       const m = JSON.parse(e.nativeEvent.data);
       if (m.ready) markReady.current?.();
       else if (m.id) { const p = pending.current.get(m.id); pending.current.delete(m.id); if (m.error) p?.rej(Object.assign(new Error(m.error), { statusCode: 422 })); else p?.res(m.pages); }

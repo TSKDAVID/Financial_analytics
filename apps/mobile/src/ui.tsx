@@ -29,8 +29,8 @@ export function Input(p: TextInputProps & { label?: string; hint?: string }) {
     <TextInput placeholderTextColor={c.muted} {...p} style={[{ backgroundColor: c.input, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 15 }, p.style]} />
     {p.hint && <Text style={{ color: c.muted, fontSize: 11 }}>{p.hint}</Text>}</View>;
 }
-export const NumInput = (p: Omit<TextInputProps, 'value' | 'onChangeText'> & { label?: string; hint?: string; value: string | number | null | undefined; onChange: (v: string) => void }) =>
-  <Input {...p} keyboardType="decimal-pad" value={p.value == null ? '' : String(p.value)} onChangeText={(v) => p.onChange(v.replace(',', '.'))} />;
+export const NumInput = (p: Omit<TextInputProps, 'value' | 'onChangeText' | 'onChange'> & { label?: string; hint?: string; value: string | number | null | undefined; onChange: (v: string) => void }) =>
+  <Input {...(p as any)} onChange={undefined} keyboardType="decimal-pad" value={p.value == null ? '' : String(p.value)} onChangeText={(v) => p.onChange(v.replace(',', '.'))} />;
 export function Chip({ label, active, onPress, color }: { label: string; active?: boolean; onPress?: () => void; color?: string }) {
   const c = useColors();
   return <Pressable onPress={onPress} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: active ? (color ?? c.primary) : c.input, marginRight: 6, marginBottom: 6 }}>

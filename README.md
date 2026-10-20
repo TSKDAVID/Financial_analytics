@@ -36,7 +36,7 @@ Tests: `npm test` · Types: `npm run typecheck` · Lint: `npm run lint`.
 | **Recurring** | Any interval: daily, weekly, every 2 weeks, monthly, quarterly, every 6 months, yearly, or custom every N days, weeks, months, or years. Start date plus an optional end date or number of payments. Items are posted automatically on their due dates and included in forecasts. |
 | **Accounts** | Cash, bank, card, and savings accounts in any currency, with running balances and transfers between accounts. |
 | **Currency** | Automatic official NBG rates (nbg.gov.ge public API), cached in SQLite with full history, so each transaction uses the rate from its own date. Falls back to the last known rate when offline. Manual override per date, per-transaction rate override, converter, and a "re-apply official rates" action. |
-| **Loans** | Bank, principal, interest rate, term, start date. Full amortization table (interest, principal, remaining balance, payoff date), an extra-payment calculator showing interest and months saved, total debt by bank, and loan payments in the bill calendar and alerts. |
+| **Loans & credit cards** | Bank, principal, interest rate, term, start date. **Term and monthly payment are linked** (change one, the other is recalculated; the last one you set is pinned). Revolving lines (credit card / overdraft / credit line) with limit, utilization, due day, and payment as a fixed amount, a % of the balance, or a payoff term. Optional fixed **monthly fee** (e.g. life insurance) included in payments, bills, reminders and the forecast. A quick **Update** action re-bases a loan on today's balance/payment, with change history and undo. Full amortization table (interest, principal, remaining balance, payoff date), an extra-payment calculator showing interest and months saved, total debt by bank, and loan payments in the bill calendar and alerts. |
 | **Subscriptions & bills** | Billing cycle, next charge, cost per month and per year. Flags duplicates (e.g. two Spotify plans) and unused subscriptions (not used in 45+ days). Utility bills month by month with a chart and alerts when a bill jumps above its usual amount. Bill calendar with paid/unpaid status (marking paid creates the transaction). |
 | **Dashboard** | Net cash flow, income, expenses, savings rate, net worth (assets minus debt). Charts: income vs expenses, spending by type, 12-month trend, and a 365-day cash-flow heatmap. Comparisons with the previous period and the same period last year. Period selector: month, quarter, year, or custom. |
 | **Forecast & what-if** | Balance forecast for 3, 6, or 12 months from recurring items, subscriptions, and loans plus your spending history, with best and worst case bands. What-if planner: income change %, a new monthly expense, a new loan, a one-off expense. |
@@ -52,48 +52,50 @@ Tests: `npm test` · Types: `npm run typecheck` · Lint: `npm run lint`.
 
 ---
 
-## 📱 Android companion app (`apps/mobile`)
+## 📱 Android app (`apps/mobile`) — full app, works offline
 
-The phone app shows a dashboard summary and an **alert inbox**. You can open an alert, mark a bill as paid, snooze, or dismiss it. You can also add and edit transactions. All data stays on your computer; the phone talks to it directly over Tailscale.
+The phone app is a **complete, standalone version** of the desktop app with its **own local SQLite database**. It runs the exact same business logic (`packages/core` + the server's services and routes, executed in-process), so it works with no computer and no internet:
 
-### 1. Tailscale (private network, free)
-1. Install [Tailscale](https://tailscale.com/download) on your computer and on your Android phone, and sign in with the **same account** on both.
-2. On the computer, note its Tailscale IP (starts with `100.`). The pairing screen lists it automatically.
-3. Keep the desktop app running (`npm start`). The phone can only sync while the computer is on.
+- **Overview**: net worth, month income/expenses, 12-month trend, spending donut, upcoming bills, insights, accounts
+- **Transactions** (search/filter, add/edit/delete, transfers, tags), **Accounts**, **Categories** (with sub-categories), **Recurring** rules
+- **Loans & cards**: amortizing loans and revolving credit lines, linked term ⇄ payment, monthly fee, quick balance updates with history/undo, amortization schedule with extra-payment what-if
+- **Bills & subscriptions** (bill calendar, mark paid/unpaid), **Budgets & goals**, **Forecast & what-if**, **Insights**, **Risk** (health score, DTI, emergency fund, stress test, credit bureau), **Alerts**, **Reports**
+- **Import** bank statements (BOG/TBC/Liberty) and **Creditinfo credit reports** from the phone's file picker — PDFs are read on the phone (pdf.js in a hidden WebView); staged review → approve → revert, exactly like the desktop
+- **Settings**: minimum balance, AI categorization, backup export (share) / restore, demo data, delete all data
+- Empty states everywhere: no scores, forecasts or risk alerts are shown until there is real income and expense data
+- **Notifications are local**: alerts are evaluated on the phone (on start, on resume and every ~15 min in the background), and bill / loan / subscription reminders are scheduled for the next 60 days with the phone's alarm manager
 
-> Security: requests from anything other than `localhost` are **rejected unless they carry a paired device token**. Pairing codes are single-use and expire after 10 minutes. You can revoke devices in Settings → Phone & notifications.
-
-### 2. Build and install the APK
-Pick one option:
-
-**A. EAS cloud build (easiest, no Android Studio needed):**
+### Install
+A signed APK can be built locally (see below). Copy it to the phone and install it (allow "install unknown apps"). Build with **Node ≥ 22**, **JDK 17** and the **Android SDK**:
 ```bash
-cd apps/mobile
-npm install
-npx eas-cli@latest login              # free Expo account
-npx eas-cli@latest init               # creates the projectId (also enables Expo push)
-npx eas-cli@latest build -p android --profile preview
-```
-Download the `.apk` from the link EAS prints, copy it to your phone, and install it (allow "install unknown apps").
-
-**B. Local build (needs Android Studio / Android SDK + JDK 17):**
-```bash
-cd apps/mobile && npm install
+cd apps/mobile && npm install            # also embeds pdf.js for offline PDF import
 npx expo prebuild -p android
-cd android && ./gradlew assembleRelease    # Windows: gradlew.bat assembleRelease
+cd android && ./gradlew assembleRelease  # Windows: gradlew.bat assembleRelease
 # APK: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 ```
+To sign with your own key, put these in `~/.gradle/gradle.properties` (never commit them; `*.keystore`/`*.jks` are git-ignored):
+```
+FA_STORE_FILE=/path/to/fa-release.keystore
+FA_STORE_PASSWORD=...
+FA_KEY_ALIAS=fa-release
+FA_KEY_PASSWORD=...
+```
+Without them the release APK is signed with the debug key. Keep the same key for updates, otherwise Android refuses to install over the old version.
 
-### 3. Pair
-On the desktop, open **Settings → Phone & notifications → Pair Android phone**. In the phone app, tap **Scan QR code**. You can also type the server URL (`http://100.x.y.z:5317`) and the pairing code by hand.
+## 🔄 Two-way sync (phone ⇄ desktop), approval-based
 
-### 4. Notifications
-Only a **short alert title and one line of text** (e.g. "Bill: Electricity – Telasi · 85 GEL due tomorrow") ever leave your computer. Three channels are available:
-1. **Background sync (always on, no cloud):** the app checks the desktop over Tailscale about every 15 minutes (Android WorkManager) and shows local notifications for new alerts.
-2. **Expo push (instant):** works automatically once you ran `eas init` (it adds a projectId) and rebuilt the APK. The phone registers its push token with your desktop on pairing. Toggle it in Settings.
-3. **ntfy (optional):** in Settings, set a secret ntfy topic (🎲 generates one) and subscribe to it in the free [ntfy](https://ntfy.sh) Android app. You can also self-host ntfy and change the server URL.
+Sync is optional. Pair once over Tailscale or the same Wi-Fi: on the desktop, open **Settings → Phone & notifications → Pair Android phone**, then on the phone go to **More → Sync → Scan QR code**.
 
-Use **Send test notification** in Settings to check.
+- **Nothing syncs without approval.** When the phone connects (app start or resume), whichever device you look at asks **“Do you want to sync?”** and shows a summary: per table, what goes to the phone and what goes to the desktop (added / edited / deleted), plus examples. The desktop shows the prompt as a modal, and the **Phone sync** page lists pending offers.
+- **Per-record change tracking.** Every synced row has a global id, `updated_at` and the device that changed it. Deletes leave tombstones. Rows both devices create on their own (built-in categories, generated bills, recurring postings, imported loans) get the same deterministic id, so they never duplicate.
+- **Newest change wins.** If the same record was edited on both devices since the last sync, it is listed as a **conflict** and you pick which version to keep (phone or desktop) before syncing.
+- **History and undo.** Both devices keep the same sync history. **Undo** on the latest sync restores the records it changed on both devices. If the other device is offline, its side is undone the next time it connects (desktop → phone), or you can undo it from the desktop page.
+- Device-local settings (lock, pairing, push tokens, the phone's notification setup) are never synced. The phone keeps scheduling its own local reminders from the merged data.
+
+The phone talks to the desktop only with its paired-device token. Pairing codes are single-use and expire after 10 minutes, and you can revoke devices on the desktop.
+
+### Desktop notifications to the phone (optional)
+The desktop can additionally push alerts via **ntfy** (Settings → secret topic, subscribe in the ntfy app). This is not needed for the offline app, which notifies locally.
 
 ---
 
@@ -131,7 +133,7 @@ API base: `http://localhost:5317/api` (e.g. `/dashboard`, `/transactions`, `/for
 
 ## Phone reminders work with the PC off
 
-After every sync, the Android app schedules **local notifications** for all unpaid bills, loan payments and subscription charges in the next 60 days. You get one at 09:00 the day before and one at 09:00 on the due date. They are rescheduled on every sync, so changes on the desktop are picked up. They fire from the phone itself even when the PC is off. Live alerts (budget, risk) still arrive through push and background sync.
+The Android app schedules **local notifications** (on start, on resume, in the background and after every sync) for all unpaid bills, loan payments and subscription charges in the next 60 days. You get one at 09:00 the day before and one at 09:00 on the due date. They are rescheduled on every sync, so changes on the desktop are picked up. They fire from the phone itself even when the PC is off. Budget, risk and low-balance alerts are evaluated on the phone too.
 
 ## Credit report import (Creditinfo Georgia)
 
