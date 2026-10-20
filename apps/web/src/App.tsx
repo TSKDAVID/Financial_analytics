@@ -17,6 +17,7 @@ import Alerts from './pages/Alerts';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import StatementImport from './pages/StatementImport';
+import Sync from './pages/Sync';
 import { queryClient } from './lib/hooks';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="risk" element={<Risk />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="sync" element={<Sync />} />
         <Route path="import" element={<StatementImport />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" />} />

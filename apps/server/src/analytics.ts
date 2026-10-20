@@ -137,7 +137,7 @@ export function insights(db: DB): Insight[] {
   for (const a of anomalies) out.push({ key: 'anomaly', severity: 'warning', params: { description: a.description ?? a.category ?? '', amount: Math.round(a.amount_gel), date: a.date, times: r2(a.amount_gel / a.median) } });
   const fc = forecastData(db, { months: 6 });
   if (fc.insufficient) { /* no forecast insights without history */ }
-  else if (fc.firstBelow) out.push({ key: 'forecastBelow', severity: 'danger', params: { month: fc.firstBelow, min: fc.minBalance } });
+  else if (fc.firstBelow) out.push({ key: 'forecastBelow', severity: 'danger', params: { month: fc.firstBelow, min: fc.minBalance ?? 0 } });
   else if (fc.base.length) out.push({ key: 'forecastOk', severity: 'success', params: { amount: Math.round(fc.base[fc.base.length - 1].expected), months: 6 } });
   void curFrom;
   return out;

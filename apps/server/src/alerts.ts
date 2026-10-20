@@ -31,7 +31,7 @@ export async function evaluateAlerts(db: DB): Promise<NewAlert[]> {
   if (risk.insufficient) db.prepare("UPDATE alerts SET dismissed = 1 WHERE type = 'risk' AND dismissed = 0").run();
   if (!risk.insufficient && risk.lowBalance.firstBelow) {
     const fb = risk.lowBalance.firstBelow;
-    list.push({ key: `lowbal:${fb.date}`, type: 'risk', severity: 'danger', title: 'Low balance ahead', body: `Balance forecast to drop to ${fmt(fb.balance)} on ${fb.date}, below your ${fmt(risk.lowBalance.minBalance)} minimum`, due_date: fb.date });
+    list.push({ key: `lowbal:${fb.date}`, type: 'risk', severity: 'danger', title: 'Low balance ahead', body: `Balance forecast to drop to ${fmt(fb.balance)} on ${fb.date}, below your ${fmt(risk.lowBalance.minBalance ?? 0)} minimum`, due_date: fb.date });
   }
   const lvl = dtiLevel(risk.health.dti);
   if (!risk.insufficient && lvl !== 'ok' && risk.monthlyIncome > 0) list.push({ key: `dti:${mk}:${lvl}`, type: 'risk', severity: lvl === 'danger' ? 'danger' : 'warning', title: 'High debt-to-income', body: `Debt payments take ${Math.round(risk.health.dti * 100)}% of income (safe: under 36%)` });

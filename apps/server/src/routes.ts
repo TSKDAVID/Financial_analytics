@@ -16,6 +16,7 @@ import { seedDemo, resetData } from './seed';
 import { AI_DEFAULTS, SECRET_KEYS } from './statements/ai';
 import { importRoutes } from './statements/routes';
 import { creditRoutes } from './credit/routes';
+import { syncRoutes } from './sync/routes';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.coerce.number().finite();
@@ -315,6 +316,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   void b; void amortize;
   importRoutes(app, db);
   creditRoutes(app, db);
+  syncRoutes(app, db);
 }
 
 export function bearer(req: FastifyRequest): string | undefined {

@@ -1,5 +1,10 @@
 /** Strings for Statement import, credit report import and AI settings. */
 export const EN_X: Record<string, string> = {
+  'nav.sync': 'Phone sync', 'sync.title': 'Phone sync', 'sync.subtitle': 'Two-way sync with the Android app over Tailscale/LAN. Nothing syncs until you approve; newest change wins, true conflicts are yours to pick.',
+  'sync.ask': 'Do you want to sync with {name}?', 'sync.intro': '{n} change(s) to sync', 'sync.last': 'last sync', 'sync.later': 'Not now', 'sync.yes': 'Sync now', 'sync.done': 'Synced',
+  'sync.toHere': 'To {name}', 'sync.toThere': 'To {name}', 'sync.newer': 'newer', 'sync.desktop': 'This computer', 'sync.conflicts': '{n} conflict(s) — both sides edited. Pick the version to keep:',
+  'sync.deletedHere': 'deleted', 'sync.connected': 'Connected phones', 'sync.noPhone': 'No phone connected right now. Open the Android app on the same network/Tailscale.', 'sync.upToDate': 'up to date', 'sync.pending': 'Waiting for approval',
+  'sync.history': 'Sync history', 'sync.none': 'No syncs yet', 'sync.undo': 'Undo last sync', 'sync.undone': 'Undone', 'sync.undoConfirm': 'Undo the last sync on this computer (the phone undoes its side on next connect)?', 'sync.bills': 'Bills', 'sync.goals': 'Goals',
   'nodata.title': 'Add income and expenses to see your score', 'nodata.body': 'Scores, forecasts, insights and risk alerts appear once you have recorded at least one income and one expense (or imported a bank statement).',
   'nodata.add': 'Add transaction', 'nodata.import': 'Import statement', 'nodata.forecast': 'Add income and expenses to see a forecast', 'nodata.insights': 'Insights appear once you have some income and expense history',
   'nodata.minUnset': 'Set a minimum balance to get low-balance warnings', 'nodata.minPlaceholder': 'not set',
@@ -33,6 +38,9 @@ export const EN_X: Record<string, string> = {
   'ai.threshold': 'Ask AI below confidence', 'ai.timeout': 'Timeout (seconds)',
 };
 export const KA_X: Record<string, string> = {
+  'nav.sync': 'ტელეფონის სინქრონი', 'sync.title': 'ტელეფონის სინქრონიზაცია', 'sync.ask': 'გსურთ სინქრონიზაცია {name}-თან?', 'sync.intro': 'სინქრონიზაციისთვის: {n} ცვლილება', 'sync.later': 'არა ახლა', 'sync.yes': 'სინქრონიზაცია',
+  'sync.done': 'სინქრონიზებულია', 'sync.desktop': 'ეს კომპიუტერი', 'sync.history': 'სინქრონის ისტორია', 'sync.undo': 'ბოლო სინქრონის გაუქმება', 'sync.undone': 'გაუქმებულია', 'sync.newer': 'უფრო ახალი',
+  'sync.conflicts': '{n} კონფლიქტი — აირჩიეთ ვერსია:', 'sync.none': 'სინქრონი ჯერ არ ყოფილა', 'sync.connected': 'დაკავშირებული ტელეფონები', 'sync.noPhone': 'ტელეფონი არ არის დაკავშირებული.',
   'nodata.title': 'დაამატეთ შემოსავალი და ხარჯი ქულის სანახავად', 'nodata.body': 'ქულა, პროგნოზი, დასკვნები და რისკის შეტყობინებები გამოჩნდება მინიმუმ ერთი შემოსავლისა და ერთი ხარჯის ჩაწერის (ან ამონაწერის იმპორტის) შემდეგ.',
   'nodata.add': 'ტრანზაქციის დამატება', 'nodata.import': 'ამონაწერის იმპორტი', 'nodata.forecast': 'დაამატეთ შემოსავალი და ხარჯი პროგნოზის სანახავად', 'nodata.insights': 'დასკვნები გამოჩნდება შემოსავლისა და ხარჯის ისტორიის შემდეგ',
   'nodata.minUnset': 'მიუთითეთ მინიმალური ნაშთი გაფრთხილებებისთვის', 'nodata.minPlaceholder': 'არ არის',

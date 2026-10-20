@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ArrowLeftRight, Repeat, Wallet, Tags, Landmark, CalendarClock, PiggyBank, LineChart, ShieldAlert, Bell, FileText, Settings, Plus, FileUp, Moon, Sun, Lock, Menu, X, Keyboard, Languages } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Repeat, Wallet, Tags, Landmark, CalendarClock, PiggyBank, LineChart, ShieldAlert, Bell, FileText, Settings, Plus, FileUp, RefreshCw, Moon, Sun, Lock, Menu, X, Keyboard, Languages } from 'lucide-react';
 import { useT, setLang, getLang } from '../lib/i18n';
 import { useApi, setTheme, useTheme, isDark } from '../lib/hooks';
 import { post, session } from '../lib/api';
 import { Button, Modal, cn } from './ui';
 import TxDialog from './TxDialog';
+import { SyncPrompt } from './SyncPrompt';
 
 const NAV = [
   { group: 'nav.group.money', items: [
@@ -14,7 +15,7 @@ const NAV = [
   { group: 'nav.group.plan', items: [
     { to: '/loans', key: 'nav.loans', icon: Landmark, sc: 'l' }, { to: '/subscriptions', key: 'nav.subscriptions', icon: CalendarClock, sc: 's' }, { to: '/budgets', key: 'nav.budgets', icon: PiggyBank, sc: 'b' },
     { to: '/forecast', key: 'nav.forecast', icon: LineChart, sc: 'f' }, { to: '/risk', key: 'nav.risk', icon: ShieldAlert, sc: 'k' } ] },
-  { group: 'nav.group.app', items: [ { to: '/import', key: 'nav.import', icon: FileUp, sc: 'i' }, { to: '/alerts', key: 'nav.alerts', icon: Bell, sc: 'n' }, { to: '/reports', key: 'nav.reports', icon: FileText, sc: 'p' }, { to: '/settings', key: 'nav.settings', icon: Settings, sc: ',' } ] },
+  { group: 'nav.group.app', items: [ { to: '/import', key: 'nav.import', icon: FileUp, sc: 'i' }, { to: '/sync', key: 'nav.sync', icon: RefreshCw, sc: 'y' }, { to: '/alerts', key: 'nav.alerts', icon: Bell, sc: 'n' }, { to: '/reports', key: 'nav.reports', icon: FileText, sc: 'p' }, { to: '/settings', key: 'nav.settings', icon: Settings, sc: ',' } ] },
 ];
 
 export function openNewTx() { window.dispatchEvent(new Event('fa:newtx')); }
@@ -94,6 +95,7 @@ export default function Layout() {
         </header>
         <main className="p-4 lg:p-8 max-w-[1500px] mx-auto"><Outlet /></main>
       </div>
+      <SyncPrompt />
       <TxDialog open={txOpen} onClose={() => setTxOpen(false)} />
       <Modal open={help} onClose={() => setHelp(false)} title={t('set.shortcuts')}>
         <div className="space-y-2 text-sm">
