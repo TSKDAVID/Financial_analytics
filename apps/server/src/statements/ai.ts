@@ -1,5 +1,5 @@
-import type { DB } from '../db';
-import { getSetting } from '../db';
+import type { DB } from '../schema';
+import { getSetting } from '../schema';
 
 /**
  * Optional AI fallback for low-confidence categorisation.

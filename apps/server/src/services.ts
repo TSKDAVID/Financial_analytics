@@ -2,7 +2,7 @@ import {
   addDays, addMonths, amortize, balanceAsOf, monthKey, occurrences, startOfMonth, endOfMonth, todayISO, nextOccurrence,
   perMonthFactor, type RecurringFlow, type FreqUnit, type LoanInput, mean, stdev,
 } from '@fa/core';
-import type { DB } from './db';
+import type { DB } from './schema';
 import { getRate, latestRates } from './rates';
 
 export interface TxRow {

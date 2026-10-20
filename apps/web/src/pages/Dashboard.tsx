@@ -9,6 +9,7 @@ import { useApi, useAction } from '../lib/hooks';
 import { post, qs } from '../lib/api';
 import { money, pct, dateFmt, monthFmt, today } from '../lib/format';
 import { Button, Card, Input, PageHeader, Spinner, Stat, Tabs, Badge, cn, Empty } from '../components/ui';
+import { NoData } from '../components/NoData';
 import { InsightList, makePeriod, shiftPeriod, type Period, type PeriodKind, axis, grid, tooltipStyle, type Insight } from '../components/shared';
 import { openNewTx } from '../components/Layout';
 
@@ -54,7 +55,7 @@ export default function Dashboard() {
         <CompareCard title={t('dash.vsLast')} cur={x} other={x.compare.prev} />
         <CompareCard title={t('dash.vsYear')} cur={x} other={x.compare.yoy} />
         <Card title={<span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" />{t('dash.health')}</span>} action={<Link to="/risk" className="text-xs text-primary">→</Link>}>
-          {risk.data ? <div className="flex items-center gap-4"><ScoreRing score={risk.data.health.score} /><div className="space-y-1 text-sm"><div className="font-semibold">{t('grade.' + risk.data.health.grade)}</div>
+          {risk.data?.insufficient ? <NoData compact /> : risk.data ? <div className="flex items-center gap-4"><ScoreRing score={risk.data.health.score} /><div className="space-y-1 text-sm"><div className="font-semibold">{t('grade.' + risk.data.health.grade)}</div>
             <div className="text-muted-foreground text-xs">{t('risk.dti')}: <b className="num">{pct(risk.data.health.dti)}</b></div>
             <div className="text-muted-foreground text-xs">{t('risk.emergency')}: <b className="num">{risk.data.emergency.months.toFixed(1)}</b> {t('common.month').toLowerCase()}</div></div></div> : <Spinner />}
         </Card>
@@ -99,7 +100,7 @@ export default function Dashboard() {
           </ComposedChart></ResponsiveContainer></div>
         </Card>
         <Card title={<span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />{t('dash.insights')}</span>} action={<Link to="/forecast" className="text-xs text-primary">→</Link>}>
-          <InsightList items={ins.data ?? []} max={6} />
+          {x.dataStatus && !x.dataStatus.sufficient ? <NoData compact what={t('nodata.insights')} /> : <InsightList items={ins.data ?? []} max={6} />}
         </Card>
       </div>
 
@@ -116,7 +117,7 @@ export default function Dashboard() {
           {!bills.data?.length && <p className="text-sm text-muted-foreground">✓</p>}
         </Card>
         <Card title={t('dash.forecast')} action={<Link to="/forecast" className="text-xs text-primary">→</Link>}>
-          {fcData ? <div className="h-56"><ResponsiveContainer><AreaChart data={fcData.base}>
+          {fcData?.insufficient ? <NoData compact what={t('nodata.forecast')} /> : fcData ? <div className="h-56"><ResponsiveContainer><AreaChart data={fcData.base}>
             <CartesianGrid {...grid} /><XAxis dataKey="month" {...axis} tickFormatter={(v) => monthFmt(v)} /><YAxis {...axis} tickFormatter={(v) => money(v, 'GEL', { compact: true })} width={55} />
             <Tooltip {...tooltipStyle} formatter={(v: number) => money(v)} />
             <Area dataKey="best" stroke="none" fill="#6366f1" fillOpacity={0.12} name={t('fc.best')} /><Area dataKey="worst" stroke="none" fill="hsl(var(--card))" fillOpacity={1} name={t('fc.worst')} />

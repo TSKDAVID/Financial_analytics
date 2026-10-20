@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { DB } from '../db';
+import type { DB } from '../schema';
 import { importCreditPdf, updateContract, approveReport, revertReport, latestCredit } from './service';
 
 const bad = (m: string, statusCode = 400) => Object.assign(new Error(m), { statusCode });

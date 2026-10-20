@@ -4,7 +4,7 @@ import fstatic from '@fastify/static';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DB } from './db';
+import type { DB } from './schema';
 import { registerRoutes, bearer } from './routes';
 import * as sec from './security';
 

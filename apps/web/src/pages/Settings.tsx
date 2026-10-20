@@ -41,7 +41,7 @@ function ShortcutsHint() { const t = useT(); return <div className="text-sm text
 function RiskSettings({ s, onSave }: { s: Record<string, any>; onSave: (p: Record<string, string>) => void }) {
   const t = useT(); const [f, setF] = useState({ minBalance: s.minBalance, lowBalanceDays: s.lowBalanceDays, emergencyTargetMonths: s.emergencyTargetMonths });
   return <form className="grid sm:grid-cols-4 gap-3 items-end" onSubmit={(e) => { e.preventDefault(); onSave(f); }}>
-    <Field label={t('risk.minBalance') + ' (₾)'}><Input type="number" value={f.minBalance} onChange={(e) => setF({ ...f, minBalance: e.target.value })} /></Field>
+    <Field label={t('risk.minBalance') + ' (₾)'}><Input type="number" value={f.minBalance ?? ''} placeholder={t('nodata.minPlaceholder')} onChange={(e) => setF({ ...f, minBalance: e.target.value })} /></Field>
     <Field label={t('set.lowDays')}><Input type="number" min={7} max={120} value={f.lowBalanceDays} onChange={(e) => setF({ ...f, lowBalanceDays: e.target.value })} /></Field>
     <Field label={t('set.emergencyTarget')}><Input type="number" min={1} max={24} value={f.emergencyTargetMonths} onChange={(e) => setF({ ...f, emergencyTargetMonths: e.target.value })} /></Field>
     <Button>{t('common.save')}</Button></form>;

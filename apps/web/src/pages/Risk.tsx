@@ -7,6 +7,7 @@ import { put } from '../lib/api';
 import { money, pct, dateFmt } from '../lib/format';
 import { Badge, Button, Card, Input, PageHeader, Progress, Spinner, cn } from '../components/ui';
 import { ScoreRing } from './Dashboard';
+import { NoData } from '../components/NoData';
 import { CreditBureauCard } from '../components/CreditBureauCard';
 import { axis, grid, tooltipStyle } from '../components/shared';
 
@@ -18,6 +19,7 @@ export default function Risk() {
   const icons: Record<string, any> = { savings: PiggyBank, debt: Landmark, emergency: LifeBuoy, stability: Activity };
   const fmtVal = (k: string, v: number) => (k === 'emergency' ? `${v.toFixed(1)} mo` : k === 'stability' ? `${Math.round((1 - v) * 100)}%` : pct(v, 1));
   const dtiTone = r.dtiLevel === 'danger' ? 'danger' : r.dtiLevel === 'warning' ? 'warning' : 'success';
+  if (r.insufficient) return <div className="space-y-6"><PageHeader title={t('risk.title')} /><CreditBureauCard /><Card><NoData /></Card></div>;
   return <div className="space-y-6">
     <PageHeader title={t('risk.title')} />
     <CreditBureauCard />
@@ -39,10 +41,10 @@ export default function Risk() {
             <p className="text-xs text-muted-foreground mt-3">{t('risk.target', { n: r.emergency.target })}{r.emergency.needed > 0 && ' · ' + t('risk.needed', { amount: money(r.emergency.needed) })}</p></Card>
         </div>
         <Card title={<span className="flex items-center gap-2"><TrendingDown className="h-4 w-4 text-danger" />{t('risk.lowBalance')}</span>} action={<div className="flex items-center gap-2 text-xs"><span className="text-muted-foreground">{t('risk.minBalance')}</span>
-          <Input className="h-8 w-24" type="number" value={minBal ?? r.lowBalance.minBalance} onChange={(e) => setMinBal(e.target.value)} />{minBal !== null && <Button size="sm" onClick={() => run(() => put('/settings', { minBalance: minBal }), '✓').then(() => setMinBal(null))}>✓</Button>}</div>}>
-          <div className={cn('rounded-lg p-3 text-sm mb-3', r.lowBalance.firstBelow ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success')}>{r.lowBalance.firstBelow ? t('risk.lowest', { amount: money(r.lowBalance.lowest.balance), date: dateFmt(r.lowBalance.lowest.date) }) : t('risk.safe', { days: r.lowBalance.days })}</div>
+          <Input className="h-8 w-24" type="number" value={minBal ?? r.lowBalance.minBalance ?? ''} placeholder={t('nodata.minPlaceholder')} onChange={(e) => setMinBal(e.target.value)} />{minBal !== null && <Button size="sm" onClick={() => run(() => put('/settings', { minBalance: minBal }), '✓').then(() => setMinBal(null))}>✓</Button>}</div>}>
+          <div className={cn('rounded-lg p-3 text-sm mb-3', r.lowBalance.firstBelow ? 'bg-danger/10 text-danger' : r.lowBalance.minBalance == null ? 'bg-muted text-muted-foreground' : 'bg-success/10 text-success')}>{r.lowBalance.firstBelow ? t('risk.lowest', { amount: money(r.lowBalance.lowest.balance), date: dateFmt(r.lowBalance.lowest.date) }) : r.lowBalance.minBalance == null ? t('nodata.minUnset') : t('risk.safe', { days: r.lowBalance.days })}</div>
           <div className="h-48"><ResponsiveContainer><AreaChart data={r.lowBalance.projection}><CartesianGrid {...grid} /><XAxis dataKey="date" {...axis} tickFormatter={(v) => v.slice(5)} minTickGap={20} /><YAxis {...axis} tickFormatter={(v) => money(v, 'GEL', { compact: true })} width={60} />
-            <Tooltip {...tooltipStyle} formatter={(v: number) => money(v)} labelFormatter={(l) => dateFmt(l)} /><ReferenceLine y={r.lowBalance.minBalance} stroke="hsl(var(--danger))" strokeDasharray="4 4" />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => money(v)} labelFormatter={(l) => dateFmt(l)} />{r.lowBalance.minBalance != null && <ReferenceLine y={r.lowBalance.minBalance} stroke="hsl(var(--danger))" strokeDasharray="4 4" />}
             <Area type="stepAfter" dataKey="balance" stroke="#6366f1" fill="#6366f1" fillOpacity={0.12} strokeWidth={2} name={t('common.balance')} /></AreaChart></ResponsiveContainer></div>
         </Card>
       </div>

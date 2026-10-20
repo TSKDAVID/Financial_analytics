@@ -1,6 +1,6 @@
 import { addDays, addMonths, startOfMonth, todayISO } from '@fa/core';
-import type { DB } from './db';
-import { seedBuiltins } from './db';
+import type { DB } from './schema';
+import { seedBuiltins } from './schema';
 import { catId, insertTransaction, materialize, payBill } from './services';
 
 const DATA_TABLES = ['bills', 'transactions', 'recurring', 'subscriptions', 'loans', 'budgets', 'goals', 'alerts', 'accounts'];

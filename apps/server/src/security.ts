@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import os from 'node:os';
-import type { DB } from './db';
-import { getSetting, setSetting } from './db';
+import type { DB } from './schema';
+import { getSetting, setSetting } from './schema';
 
 export const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 export const randomToken = (prefix: string) => prefix + crypto.randomBytes(24).toString('base64url');

@@ -7,6 +7,7 @@ import { post } from '../lib/api';
 import { money, dateFmt, monthFmt, today } from '../lib/format';
 import { Button, Card, Field, Input, PageHeader, Spinner, Switch, Tabs, cn, th, td } from '../components/ui';
 import { InsightList, axis, grid, tooltipStyle, type Insight } from '../components/shared';
+import { NoData } from '../components/NoData';
 
 const init = { incomeChangePct: 0, newExpenseMonthly: 0, loan: false, principal: 10000, annualRatePct: 15, termMonths: 36, oneOffAmount: 0, oneOffDate: today() };
 
@@ -28,17 +29,17 @@ export default function Forecast() {
   return <div className="space-y-6">
     <PageHeader title={t('fc.title')} actions={<Tabs value={String(months) as any} onChange={(v: any) => setMonths(Number(v) as any)} options={[{ value: '3', label: '3m' }, { value: '6', label: '6m' }, { value: '12', label: '12m' }]} />} />
     <div className="grid gap-4 lg:grid-cols-4">
-      <Card className="lg:col-span-3" title={t('dash.forecast')} subtitle={data && <>{t('common.balance')}: <b className="num">{money(data.startBalance)}</b> · min {money(data.minBalance)}</>}>
-        {!data ? <Spinner /> : <><div className="h-96"><ResponsiveContainer><ComposedChart data={rows}>
+      <Card className="lg:col-span-3" title={t('dash.forecast')} subtitle={data && <>{t('common.balance')}: <b className="num">{money(data.startBalance)}</b> {data.minBalance != null && <> · min {money(data.minBalance)}</>}</>}>
+        {!data ? <Spinner /> : data.insufficient ? <NoData what={t('nodata.forecast')} /> : <><div className="h-96"><ResponsiveContainer><ComposedChart data={rows}>
           <CartesianGrid {...grid} /><XAxis dataKey="month" {...axis} tickFormatter={(v) => monthFmt(v)} /><YAxis {...axis} tickFormatter={(v) => money(v, 'GEL', { compact: true })} width={65} />
           <Tooltip {...tooltipStyle} formatter={(v: any) => (Array.isArray(v) ? `${money(v[0], 'GEL', { decimals: 0 })} – ${money(v[1], 'GEL', { decimals: 0 })}` : money(v))} labelFormatter={(l) => monthFmt(l, false)} /><Legend />
           <Area dataKey="band" stroke="none" fill="#6366f1" fillOpacity={0.15} name={`${t('fc.worst')} – ${t('fc.best')}`} />
           <Line dataKey="expected" stroke="#6366f1" strokeWidth={2.5} dot={false} name={`${t('fc.base')} · ${t('fc.expected')}`} />
           {changed && <Area dataKey="sBand" stroke="none" fill="#f59e0b" fillOpacity={0.15} name={`${t('fc.scenario')} range`} />}
           {changed && <Line dataKey="scenario" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="6 3" dot={false} name={t('fc.scenario')} />}
-          <ReferenceLine y={data.minBalance} stroke="hsl(var(--danger))" strokeDasharray="4 4" label={{ value: 'min', fill: 'hsl(var(--danger))', fontSize: 11 }} />
+          {data.minBalance != null && <ReferenceLine y={data.minBalance} stroke="hsl(var(--danger))" strokeDasharray="4 4" label={{ value: 'min', fill: 'hsl(var(--danger))', fontSize: 11 }} />}
         </ComposedChart></ResponsiveContainer></div>
-          <div className={cn('mt-4 flex items-center gap-2 rounded-lg p-3 text-sm', data.firstBelow ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success')}>{data.firstBelow ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}{data.firstBelow ? t('fc.below', { min: money(data.minBalance), month: monthFmt(data.firstBelow, false) }) : t('fc.ok')}</div></>}
+          <div className={cn('mt-4 flex items-center gap-2 rounded-lg p-3 text-sm', data.firstBelow ? 'bg-danger/10 text-danger' : data.minBalance == null ? 'bg-muted text-muted-foreground' : 'bg-success/10 text-success')}>{data.firstBelow ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}{data.firstBelow ? t('fc.below', { min: money(data.minBalance), month: monthFmt(data.firstBelow, false) }) : data.minBalance == null ? t('nodata.minUnset') : t('fc.ok')}</div></>}
       </Card>
       <Card title={t('fc.whatif')} action={changed && <Button size="sm" variant="ghost" onClick={() => setW(init)}><RotateCcw className="h-3.5 w-3.5" /></Button>}>
         <div className="space-y-4">

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { DB } from '../db';
+import type { DB } from '../schema';
 import { importPdf, updateRow, approve, revert, discard, analyze, runAi, detectDuplicates, learnedMap } from './service';
 import { aiConfig, testConnection, type Provider } from './ai';
-import { getSetting } from '../db';
+import { getSetting } from '../schema';
 
 const bad = (msg: string, statusCode = 400) => Object.assign(new Error(msg), { statusCode });
 function parse<T>(s: z.ZodType<T>, d: unknown): T { const r = s.safeParse(d); if (!r.success) throw bad(r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')); return r.data; }

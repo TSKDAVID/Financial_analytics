@@ -2,11 +2,24 @@ import {
   addDays, addMonths, endOfMonth, monthKey, startOfMonth, todayISO, forecast, dailyProjection, healthScore, dtiLevel, stressTest,
   detectAnomalies, isSpike, seasonality, mean, diffDays, monthsBetween,
 } from '@fa/core';
-import type { DB } from './db';
-import { getSetting } from './db';
+import type { DB } from './schema';
+import { getSetting } from './schema';
 import { accountBalances, budgetStatus, futureFlows, monthlyTotals, periodSummary, riskMetrics, subscriptionInfo, type SubRow, catTree } from './services';
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** Is there enough history to compute scores, forecasts and risk alerts? (≥1 income and ≥1 expense transaction) */
+export function dataStatus(db: DB) {
+  const r = db.prepare("SELECT SUM(kind = 'income') AS inc, SUM(kind = 'expense') AS exp, COUNT(DISTINCT substr(date,1,7)) AS months FROM transactions WHERE kind != 'transfer'").get() as { inc: number | null; exp: number | null; months: number };
+  const accounts = (db.prepare('SELECT COUNT(*) AS c FROM accounts WHERE archived = 0').get() as { c: number }).c;
+  const income = r.inc ?? 0, expense = r.exp ?? 0;
+  return { incomeCount: income, expenseCount: expense, months: r.months, accounts, sufficient: income > 0 && expense > 0 };
+}
+/** User-defined minimum balance, or null when not set. */
+export function minBalance(db: DB): number | null {
+  const v = getSetting(db, 'minBalance'); if (v == null || v.trim() === '') return null;
+  const n = Number(v); return isFinite(n) ? n : null;
+}
 
 export function dashboard(db: DB, from: string, to: string) {
   const len = diffDays(from, to) + 1;
@@ -33,7 +46,7 @@ export function dashboard(db: DB, from: string, to: string) {
       prev: { ...prev, incomePct: pct(cur.income, prev.income), expensePct: pct(cur.expense, prev.expense), netPct: pct(cur.net, prev.net) },
       yoy: { ...yoy, incomePct: pct(cur.income, yoy.income), expensePct: pct(cur.expense, yoy.expense), netPct: pct(cur.net, yoy.net) },
     },
-    byCategory, trend, daily, series, accounts: accountBalances(db).filter((a) => !a.archived),
+    byCategory, trend, daily, series, accounts: accountBalances(db).filter((a) => !a.archived), dataStatus: dataStatus(db),
   };
 }
 
@@ -56,9 +69,9 @@ export function forecastData(db: DB, w: WhatIf = {}) {
   }
   const base = forecast({ startBalance: balance, asOf: today, months, recurring: futureFlows(db, today), historyVariableNet: varHist });
   const scenario = forecast({ startBalance: balance, asOf: today, months, recurring: flows, historyVariableNet: varHist, adjustments: { incomeChangePct: w.incomeChangePct, monthlyDelta, oneOff } });
-  const minBal = Number(getSetting(db, 'minBalance') ?? 0);
-  const firstBelow = scenario.find((p) => p.expected < minBal)?.month ?? null;
-  return { startBalance: r2(balance), minBalance: minBal, base, scenario, firstBelow, monthlyVariableAvg: r2(mean(varHist)) };
+  const minBal = minBalance(db); const status = dataStatus(db);
+  const firstBelow = minBal != null && status.sufficient ? scenario.find((p) => p.expected < minBal)?.month ?? null : null;
+  return { startBalance: r2(balance), minBalance: minBal, base, scenario, firstBelow, monthlyVariableAvg: r2(mean(varHist)), dataStatus: status, insufficient: !status.sufficient };
 }
 
 export function riskData(db: DB) {
@@ -66,7 +79,7 @@ export function riskData(db: DB) {
   const h = healthScore(m);
   const st = stressTest(m.liquidSavings, m.monthlyEssential, m.monthlyDebtPayments, 24);
   const target = Number(getSetting(db, 'emergencyTargetMonths') ?? 6);
-  const minBal = Number(getSetting(db, 'minBalance') ?? 0);
+  const minBal = minBalance(db); const status = dataStatus(db);
   const days = Number(getSetting(db, 'lowBalanceDays') ?? 30);
   const liquid = m.liquidSavings;
   const flows = futureFlows(db);
@@ -74,11 +87,11 @@ export function riskData(db: DB) {
   const varHist = monthlyTotals(db, histFrom, endOfMonth(addMonths(todayISO(), -1)), { variableOnly: true }).map((x) => x.income - x.expense);
   const proj = dailyProjection(liquid, todayISO(), days, flows, mean(varHist) / 30.4);
   const lowest = proj.reduce((lo, p) => (p.balance < lo.balance ? p : lo), proj[0] ?? { date: todayISO(), balance: liquid, change: 0 });
-  const firstBelow = proj.find((p) => p.balance < minBal) ?? null;
+  const firstBelow = minBal != null && status.sufficient ? proj.find((p) => p.balance < minBal) ?? null : null;
   return {
     ...m, loans: undefined, health: h, dtiLevel: dtiLevel(h.dti), stress: { ...st, runwayMonths: isFinite(st.runwayMonths) ? r2(st.runwayMonths) : null },
     emergency: { months: r2(h.emergencyMonths), target, needed: r2(Math.max(0, target * m.monthlyExpenses - liquid)) },
-    lowBalance: { minBalance: minBal, days, lowest, firstBelow, projection: proj }, budgets: budgetStatus(db),
+    lowBalance: { minBalance: minBal, days, lowest, firstBelow, projection: proj }, budgets: budgetStatus(db), dataStatus: status, insufficient: !status.sufficient,
   };
 }
 
@@ -87,6 +100,7 @@ export interface Insight { key: string; severity: 'info' | 'warning' | 'danger' 
 export function insights(db: DB): Insight[] {
   const today = todayISO();
   const out: Insight[] = [];
+  const status = dataStatus(db);
   const curFrom = startOfMonth(today);
   const dayFrac = Math.max(0.1, Number(today.slice(8)) / Number(endOfMonth(today).slice(8)));
   const cats = db.prepare("SELECT id, name, key FROM categories WHERE kind='expense' AND parent_id IS NULL").all() as { id: number; name: string; key: string }[];
@@ -110,7 +124,7 @@ export function insights(db: DB): Insight[] {
     if (s) out.push({ key: s === 'winter' ? 'seasonWinter' : 'seasonSummer', severity: 'info', params: { category: c.name } });
   }
   const sum = periodSummary(db, startOfMonth(addMonths(today, -3)), endOfMonth(addMonths(today, -1)));
-  if (sum.income > 0) {
+  if (status.sufficient && sum.income > 0) {
     const sr = Math.round(sum.savingsRate * 100);
     out.push({ key: sr >= 20 ? 'savingsGood' : sr >= 0 ? 'savingsLow' : 'savingsNegative', severity: sr >= 20 ? 'success' : sr >= 0 ? 'warning' : 'danger', params: { pct: sr } });
   }
@@ -122,7 +136,8 @@ export function insights(db: DB): Insight[] {
   const anomalies = anomaliesList(db).slice(0, 3);
   for (const a of anomalies) out.push({ key: 'anomaly', severity: 'warning', params: { description: a.description ?? a.category ?? '', amount: Math.round(a.amount_gel), date: a.date, times: r2(a.amount_gel / a.median) } });
   const fc = forecastData(db, { months: 6 });
-  if (fc.firstBelow) out.push({ key: 'forecastBelow', severity: 'danger', params: { month: fc.firstBelow, min: fc.minBalance } });
+  if (fc.insufficient) { /* no forecast insights without history */ }
+  else if (fc.firstBelow) out.push({ key: 'forecastBelow', severity: 'danger', params: { month: fc.firstBelow, min: fc.minBalance } });
   else if (fc.base.length) out.push({ key: 'forecastOk', severity: 'success', params: { amount: Math.round(fc.base[fc.base.length - 1].expected), months: 6 } });
   void curFrom;
   return out;

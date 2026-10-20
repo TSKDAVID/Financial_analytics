@@ -19,4 +19,4 @@ console.log(`\n  💰 Financial Analytics running at ${url}\n  Data: ${DATA_DIR}
 void tick();
 setInterval(tick, 15 * 60 * 1000);
 if (process.argv.includes('--open') && process.env.NO_OPEN !== '1') { const { default: open } = await import('open'); open(url).catch(() => undefined); }
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => { db.close(); process.exit(0); });
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => { db.close?.(); process.exit(0); });

@@ -1,6 +1,6 @@
 import { addDays, monthKey, todayISO, dtiLevel } from '@fa/core';
-import type { DB } from './db';
-import { getSetting } from './db';
+import type { DB } from './schema';
+import { getSetting } from './schema';
 import { budgetStatus } from './services';
 import { riskData, utilitiesData, anomaliesList } from './analytics';
 import { pushAlert } from './notify';
@@ -26,13 +26,16 @@ export async function evaluateAlerts(db: DB): Promise<NewAlert[]> {
     else if (b.pct >= 0.8) list.push({ key: `budget:${b.category_id}:${mk}:80`, type: 'budget', severity: 'warning', title: `Budget at ${Math.round(b.pct * 100)}%: ${b.name}`, body: `${fmt(b.remaining)} left this month`, ref_type: 'budget', ref_id: b.id });
   }
   const risk = riskData(db);
-  if (risk.lowBalance.firstBelow) {
+  // never raise risk alerts without real income/expense history; clear stale ones
+  if (risk.insufficient || risk.lowBalance.minBalance == null) db.prepare("UPDATE alerts SET dismissed = 1 WHERE type = 'risk' AND key LIKE 'lowbal:%' AND dismissed = 0").run();
+  if (risk.insufficient) db.prepare("UPDATE alerts SET dismissed = 1 WHERE type = 'risk' AND dismissed = 0").run();
+  if (!risk.insufficient && risk.lowBalance.firstBelow) {
     const fb = risk.lowBalance.firstBelow;
     list.push({ key: `lowbal:${fb.date}`, type: 'risk', severity: 'danger', title: 'Low balance ahead', body: `Balance forecast to drop to ${fmt(fb.balance)} on ${fb.date}, below your ${fmt(risk.lowBalance.minBalance)} minimum`, due_date: fb.date });
   }
   const lvl = dtiLevel(risk.health.dti);
-  if (lvl !== 'ok' && risk.monthlyIncome > 0) list.push({ key: `dti:${mk}:${lvl}`, type: 'risk', severity: lvl === 'danger' ? 'danger' : 'warning', title: 'High debt-to-income', body: `Debt payments take ${Math.round(risk.health.dti * 100)}% of income (safe: under 36%)` });
-  if (risk.monthlyExpenses > 0 && risk.emergency.months < 1) list.push({ key: `emergency:${mk}`, type: 'risk', severity: 'warning', title: 'Emergency fund is low', body: `Savings cover ${risk.emergency.months.toFixed(1)} months of expenses (target ${risk.emergency.target})` });
+  if (!risk.insufficient && lvl !== 'ok' && risk.monthlyIncome > 0) list.push({ key: `dti:${mk}:${lvl}`, type: 'risk', severity: lvl === 'danger' ? 'danger' : 'warning', title: 'High debt-to-income', body: `Debt payments take ${Math.round(risk.health.dti * 100)}% of income (safe: under 36%)` });
+  if (!risk.insufficient && risk.monthlyExpenses > 0 && risk.emergency.months < 1) list.push({ key: `emergency:${mk}`, type: 'risk', severity: 'warning', title: 'Emergency fund is low', body: `Savings cover ${risk.emergency.months.toFixed(1)} months of expenses (target ${risk.emergency.target})` });
   for (const j of utilitiesData(db).jumps) list.push({ key: `utiljump:${j.key}:${j.month}`, type: 'utility', severity: 'warning', title: `${j.name} bill jumped ${j.pct}%`, body: `${fmt(j.amount)} in ${j.month} vs usual ${fmt(j.usual)}` });
   for (const a of anomaliesList(db).slice(0, 5)) list.push({ key: `anomaly:${a.id}`, type: 'anomaly', severity: 'info', title: 'Unusual transaction', body: `${a.description ?? a.category ?? 'Expense'}: ${fmt(a.amount_gel)} on ${a.date} (~${(a.amount_gel / a.median).toFixed(1)}× usual)`, ref_type: 'transaction', ref_id: a.id });
 

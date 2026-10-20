@@ -1,5 +1,8 @@
 /** Strings for Statement import, credit report import and AI settings. */
 export const EN_X: Record<string, string> = {
+  'nodata.title': 'Add income and expenses to see your score', 'nodata.body': 'Scores, forecasts, insights and risk alerts appear once you have recorded at least one income and one expense (or imported a bank statement).',
+  'nodata.add': 'Add transaction', 'nodata.import': 'Import statement', 'nodata.forecast': 'Add income and expenses to see a forecast', 'nodata.insights': 'Insights appear once you have some income and expense history',
+  'nodata.minUnset': 'Set a minimum balance to get low-balance warnings', 'nodata.minPlaceholder': 'not set',
   'imp.tab.statement': 'Bank statement', 'imp.tab.credit': 'Credit report (Creditinfo)',
   'cr.drop': 'Upload your Creditinfo Georgia report (ჩემი კრედიტინფო PDF)', 'cr.privacy': 'Read locally. Name, personal ID and passport number are never extracted or stored.', 'cr.empty': 'No credit reports yet',
   'cr.reportDate': 'Report date', 'cr.score': 'Credit score', 'cr.rating': 'Rating', 'cr.pd': 'Default probability', 'cr.totalDebt': 'Total debt', 'cr.monthly': 'Monthly payments', 'cr.overdue': 'Overdue',
@@ -30,6 +33,9 @@ export const EN_X: Record<string, string> = {
   'ai.threshold': 'Ask AI below confidence', 'ai.timeout': 'Timeout (seconds)',
 };
 export const KA_X: Record<string, string> = {
+  'nodata.title': 'დაამატეთ შემოსავალი და ხარჯი ქულის სანახავად', 'nodata.body': 'ქულა, პროგნოზი, დასკვნები და რისკის შეტყობინებები გამოჩნდება მინიმუმ ერთი შემოსავლისა და ერთი ხარჯის ჩაწერის (ან ამონაწერის იმპორტის) შემდეგ.',
+  'nodata.add': 'ტრანზაქციის დამატება', 'nodata.import': 'ამონაწერის იმპორტი', 'nodata.forecast': 'დაამატეთ შემოსავალი და ხარჯი პროგნოზის სანახავად', 'nodata.insights': 'დასკვნები გამოჩნდება შემოსავლისა და ხარჯის ისტორიის შემდეგ',
+  'nodata.minUnset': 'მიუთითეთ მინიმალური ნაშთი გაფრთხილებებისთვის', 'nodata.minPlaceholder': 'არ არის',
   'imp.tab.statement': 'ბანკის ამონაწერი', 'imp.tab.credit': 'საკრედიტო ისტორია (კრედიტინფო)',
   'cr.drop': 'ატვირთეთ კრედიტინფოს რეპორტი (ჩემი კრედიტინფო PDF)', 'cr.privacy': 'იკითხება ლოკალურად. სახელი, პირადი ნომერი და პასპორტი არ ინახება.', 'cr.empty': 'რეპორტი ჯერ არ არის',
   'cr.reportDate': 'რეპორტის თარიღი', 'cr.score': 'საკრედიტო ქულა', 'cr.rating': 'რეიტინგი', 'cr.pd': 'შეუსრულებლობის ალბათობა', 'cr.totalDebt': 'ჯამური ვალი', 'cr.monthly': 'თვიური შენატანი', 'cr.overdue': 'ვადაგადაცილება',

@@ -1,5 +1,5 @@
 import { monthlyPayment, todayISO } from '@fa/core';
-import type { DB } from '../db';
+import type { DB } from '../schema';
 import { materialize } from '../services';
 import { extractLines } from '../statements/pdf';
 import { aiConfig } from '../statements/ai';

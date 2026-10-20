@@ -1,5 +1,5 @@
 import { normalizeNbgRate, todayISO, addDays } from '@fa/core';
-import type { DB } from './db';
+import type { DB } from './schema';
 
 const NBG_URL = 'https://nbg.gov.ge/gw/api/ct/monetarypolicy/currencies/en/json/';
 export const SUPPORTED = ['USD', 'EUR', 'GBP', 'TRY', 'RUB', 'AMD', 'AZN', 'UAH', 'CHF', 'JPY', 'CNY', 'AED', 'PLN', 'CZK', 'SEK', 'NOK', 'DKK', 'CAD', 'AUD', 'ILS', 'KZT'];

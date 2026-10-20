@@ -1,5 +1,5 @@
-import type { DB } from './db';
-import { getSetting } from './db';
+import type { DB } from './schema';
+import { getSetting } from './schema';
 
 /**
  * Sends a short alert text to phones. Only the title and one-line body leave the machine.

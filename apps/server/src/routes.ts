@@ -1,8 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { amortize, extraPaymentSavings, occurrences, todayISO, addMonths, suggestCategory, DEFAULT_KEYWORDS, startOfMonth, endOfMonth, monthKey } from '@fa/core';
-import type { DB } from './db';
-import { getSetting, setSetting, seedBuiltins } from './db';
+import type { DB } from './schema';
+import { getSetting, setSetting, seedBuiltins } from './schema';
 import { getRate, latestRates, fetchNbg, SUPPORTED } from './rates';
 import {
   insertTransaction, materialize, payBill, unpayBill, catTree, accountBalances, loanStatus, subscriptionInfo, duplicateSubscriptions,

@@ -1,5 +1,5 @@
 import { categorize, normalizeMerchant, detectRecurring, addDays } from '@fa/core';
-import type { DB } from '../db';
+import type { DB } from '../schema';
 import { insertTransaction } from '../services';
 import { latestRates } from '../rates';
 import { extractLines } from './pdf';
