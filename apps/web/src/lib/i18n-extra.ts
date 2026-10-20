@@ -1,5 +1,14 @@
 /** Strings for Statement import, credit report import and AI settings. */
 export const EN_X: Record<string, string> = {
+  'imp.tab.statement': 'Bank statement', 'imp.tab.credit': 'Credit report (Creditinfo)',
+  'cr.drop': 'Upload your Creditinfo Georgia report (ჩემი კრედიტინფო PDF)', 'cr.privacy': 'Read locally. Name, personal ID and passport number are never extracted or stored.', 'cr.empty': 'No credit reports yet',
+  'cr.reportDate': 'Report date', 'cr.score': 'Credit score', 'cr.rating': 'Rating', 'cr.pd': 'Default probability', 'cr.totalDebt': 'Total debt', 'cr.monthly': 'Monthly payments', 'cr.overdue': 'Overdue',
+  'cr.active': 'Active contracts', 'cr.closed': 'Closed contracts (history)', 'cr.creditor': 'Creditor', 'cr.original': 'Original', 'cr.balance': 'Balance', 'cr.payment': 'Monthly', 'cr.rate': 'Rate', 'cr.term': 'Installments',
+  'cr.dates': 'Start → end', 'cr.overdueDays': 'Overdue', 'cr.penalty': 'Penalties', 'cr.action': 'Proposed', 'cr.revertConfirm': 'Undo all loan changes made by this report?',
+  'cr.act.create': 'New loan', 'cr.act.update': 'Update loan', 'cr.act.close': 'Mark closed', 'cr.act.unchanged': 'Up to date', 'cr.act.history': 'History',
+  'cr.type.loan': 'Loan', 'cr.type.credit_card': 'Credit card', 'cr.type.overdraft': 'Overdraft', 'cr.type.installment': 'Installment', 'cr.type.mortgage': 'Mortgage', 'cr.type.other': 'Other',
+  'cr.f.name': 'Name', 'cr.f.principal': 'Principal', 'cr.f.annual_rate': 'Rate % / yr', 'cr.f.term_months': 'Term (months)', 'cr.f.start_date': 'Start date',
+  'cr.riskTitle': 'Credit bureau (Creditinfo)', 'cr.riskNone': 'Import your Creditinfo report in Statement import → Credit report to see your score here.', 'cr.activeLoans': 'Active contracts', 'cr.penaltiesAcc': 'Penalties accrued',
   'nav.import': 'Statement import', 'imp.title': 'Statement import', 'imp.subtitle': 'Upload a PDF bank statement (BOG, TBC, Liberty…). Nothing changes until you approve.',
   'imp.upload': 'Upload PDF', 'imp.drop': 'Drop a PDF statement here or click to choose', 'imp.parsing': 'Reading statement…', 'imp.account': 'Post to account', 'imp.history': 'Import history',
   'imp.staged': 'Staged', 'imp.approved': 'Approved', 'imp.partial': 'Partly approved', 'imp.reverted': 'Reverted', 'imp.discarded': 'Discarded',
@@ -21,6 +30,15 @@ export const EN_X: Record<string, string> = {
   'ai.threshold': 'Ask AI below confidence', 'ai.timeout': 'Timeout (seconds)',
 };
 export const KA_X: Record<string, string> = {
+  'imp.tab.statement': 'ბანკის ამონაწერი', 'imp.tab.credit': 'საკრედიტო ისტორია (კრედიტინფო)',
+  'cr.drop': 'ატვირთეთ კრედიტინფოს რეპორტი (ჩემი კრედიტინფო PDF)', 'cr.privacy': 'იკითხება ლოკალურად. სახელი, პირადი ნომერი და პასპორტი არ ინახება.', 'cr.empty': 'რეპორტი ჯერ არ არის',
+  'cr.reportDate': 'რეპორტის თარიღი', 'cr.score': 'საკრედიტო ქულა', 'cr.rating': 'რეიტინგი', 'cr.pd': 'შეუსრულებლობის ალბათობა', 'cr.totalDebt': 'ჯამური ვალი', 'cr.monthly': 'თვიური შენატანი', 'cr.overdue': 'ვადაგადაცილება',
+  'cr.active': 'მიმდინარე კონტრაქტები', 'cr.closed': 'დახურული კონტრაქტები', 'cr.creditor': 'კრედიტორი', 'cr.original': 'საწყისი', 'cr.balance': 'ნაშთი', 'cr.payment': 'თვიური', 'cr.rate': 'განაკვეთი', 'cr.term': 'შენატანები',
+  'cr.dates': 'დაწყება → დასრულება', 'cr.overdueDays': 'ვადაგადაც.', 'cr.penalty': 'ჯარიმები', 'cr.action': 'შეთავაზება', 'cr.revertConfirm': 'გავაუქმოთ ამ რეპორტით შეტანილი ცვლილებები?',
+  'cr.act.create': 'ახალი სესხი', 'cr.act.update': 'განახლება', 'cr.act.close': 'დახურვა', 'cr.act.unchanged': 'განახლებულია', 'cr.act.history': 'ისტორია',
+  'cr.type.loan': 'სესხი', 'cr.type.credit_card': 'საკრედიტო ბარათი', 'cr.type.overdraft': 'ოვერდრაფტი', 'cr.type.installment': 'განვადება', 'cr.type.mortgage': 'იპოთეკა', 'cr.type.other': 'სხვა',
+  'cr.f.name': 'სახელი', 'cr.f.principal': 'ძირი', 'cr.f.annual_rate': 'წლიური %', 'cr.f.term_months': 'ვადა (თვე)', 'cr.f.start_date': 'დაწყება',
+  'cr.riskTitle': 'საკრედიტო ბიურო (კრედიტინფო)', 'cr.riskNone': 'ატვირთეთ კრედიტინფოს რეპორტი, რომ ქულა აქ ნახოთ.', 'cr.activeLoans': 'მიმდინარე კონტრაქტები', 'cr.penaltiesAcc': 'დარიცხული ჯარიმები',
   'nav.import': 'ამონაწერის იმპორტი', 'imp.title': 'ამონაწერის იმპორტი', 'imp.subtitle': 'ატვირთეთ ბანკის PDF ამონაწერი (BOG, TBC, ლიბერთი…). არაფერი შეიცვლება დადასტურებამდე.',
   'imp.upload': 'PDF-ის ატვირთვა', 'imp.drop': 'ჩააგდეთ PDF აქ ან დააჭირეთ ასარჩევად', 'imp.parsing': 'ამონაწერის კითხვა…', 'imp.account': 'ანგარიში', 'imp.history': 'იმპორტის ისტორია',
   'imp.staged': 'მოლოდინში', 'imp.approved': 'დადასტურებული', 'imp.partial': 'ნაწილობრივ', 'imp.reverted': 'გაუქმებული', 'imp.discarded': 'უარყოფილი',

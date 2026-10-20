@@ -132,3 +132,14 @@ API base: `http://localhost:5317/api` (e.g. `/dashboard`, `/transactions`, `/for
 ## Phone reminders work with the PC off
 
 After every sync, the Android app schedules **local notifications** for all unpaid bills, loan payments and subscription charges in the next 60 days. You get one at 09:00 the day before and one at 09:00 on the due date. They are rescheduled on every sync, so changes on the desktop are picked up. They fire from the phone itself even when the PC is off. Live alerts (budget, risk) still arrive through push and background sync.
+
+## Credit report import (Creditinfo Georgia)
+
+Go to **Statement import → Credit report (Creditinfo)** and upload the "ჩემი კრედიტინფო" PDF.
+
+- **What is parsed:** the summary (credit score, rating, default probability, total debt, monthly payments, overdue amount, score factors) and every contract. For each contract: creditor, type (loan / credit card / overdraft / installment / mortgage), original amount, balance, outstanding principal, currency, interest rate (when present, otherwise estimated from the monthly payment), start, end and closure dates, monthly payment, installments, overdue amounts and days, penalties, and the monthly balance schedule. Closed contracts are kept as history.
+- **Personal data:** your name, personal ID, passport number and birth date are never extracted or stored.
+- **Approval workflow:** this works the same way as statements. Nothing changes until you approve. Each active contract is proposed as a **new loan** (amortization and monthly payment bills are generated automatically), an **update** to a matching existing loan (matched by contract ID, or by bank, amount and start date; the field-by-field diff is shown), or **mark closed**. Before approving you can edit the name, principal, rate, term or start date, or exclude a contract. **Revert** deletes the loans that report created and restores the loans it updated.
+- **Credit cards and overdrafts** are revolving lines. By default they are modelled as the current balance paid down over 12 months; edit the term or rate to match your plan.
+- **AI fallback:** if a field can't be parsed, the local model (Ollama or an OpenAI-compatible server) is asked to read only that contract's section. A cloud provider is never used for credit reports.
+- The **Risk** page shows your latest Creditinfo score, rating and debt totals.

@@ -26,7 +26,7 @@ export async function extractLines(data: Uint8Array): Promise<Line[]> {
       // merge cells that touch (pdf.js often splits words)
       const merged: Cell[] = [];
       for (const c of l.cells) { const last = merged[merged.length - 1]; if (last && c.x - (last.x + last.w) < 1.5) { last.str += c.str; last.w = c.x + c.w - last.x; } else merged.push({ ...c }); }
-      lines.push({ page: p, y: l.y, cells: merged, text: merged.map((c) => c.str).join('  ') });
+      lines.push({ page: p, y: l.y, cells: merged, text: merged.map((c, i) => (i === 0 ? '' : c.x - (merged[i - 1].x + merged[i - 1].w) < 6 ? ' ' : '   ') + c.str).join('') });
     }
   }
   await doc.destroy();

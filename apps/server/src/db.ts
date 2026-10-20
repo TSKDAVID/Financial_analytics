@@ -1,4 +1,5 @@
 import { migrateImports } from './statements/service';
+import { migrateCredit } from './credit/service';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -97,6 +98,7 @@ export function openDb(file?: string): DB {
   db.exec(SCHEMA);
   seedBuiltins(db);
   migrateImports(db);
+  migrateCredit(db);
   return db;
 }
 

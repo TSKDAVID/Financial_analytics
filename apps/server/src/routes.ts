@@ -15,6 +15,7 @@ import * as sec from './security';
 import { seedDemo, resetData } from './seed';
 import { AI_DEFAULTS, SECRET_KEYS } from './statements/ai';
 import { importRoutes } from './statements/routes';
+import { creditRoutes } from './credit/routes';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.coerce.number().finite();
@@ -313,6 +314,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   app.get('/api/meta', async () => ({ today: todayISO(), rates: latestRates(db), hasData: (db.prepare('SELECT COUNT(*) AS c FROM transactions').get() as { c: number }).c > 0 || (db.prepare('SELECT COUNT(*) AS c FROM accounts').get() as { c: number }).c > 0, baseCurrency: getSetting(db, 'baseCurrency') ?? 'GEL' }));
   void b; void amortize;
   importRoutes(app, db);
+  creditRoutes(app, db);
 }
 
 export function bearer(req: FastifyRequest): string | undefined {

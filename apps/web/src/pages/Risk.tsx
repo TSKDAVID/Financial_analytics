@@ -7,6 +7,7 @@ import { put } from '../lib/api';
 import { money, pct, dateFmt } from '../lib/format';
 import { Badge, Button, Card, Input, PageHeader, Progress, Spinner, cn } from '../components/ui';
 import { ScoreRing } from './Dashboard';
+import { CreditBureauCard } from '../components/CreditBureauCard';
 import { axis, grid, tooltipStyle } from '../components/shared';
 
 export default function Risk() {
@@ -19,6 +20,7 @@ export default function Risk() {
   const dtiTone = r.dtiLevel === 'danger' ? 'danger' : r.dtiLevel === 'warning' ? 'warning' : 'success';
   return <div className="space-y-6">
     <PageHeader title={t('risk.title')} />
+    <CreditBureauCard />
     <div className="grid gap-4 lg:grid-cols-3">
       <Card title={<span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" />{t('risk.score')}</span>}>
         <div className="flex flex-col items-center gap-2"><ScoreRing score={h.score} size={150} /><Badge tone={h.score >= 65 ? 'success' : h.score >= 50 ? 'warning' : 'danger'} className="text-sm px-3">{t('grade.' + h.grade)}</Badge></div>

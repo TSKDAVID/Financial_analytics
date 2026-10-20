@@ -8,6 +8,7 @@ import { post, put } from '../lib/api';
 import { money, dateFmt } from '../lib/format';
 import { Button, Card, Badge, PageHeader, Empty, Spinner, Tabs, Stat, th, td, cn } from '../components/ui';
 import { CategorySelect, AccountSelect } from '../components/pickers';
+import CreditImport from './CreditImport';
 import { InsightList, CHART_COLORS, axis, grid, tooltipStyle } from '../components/shared';
 
 const statusTone: Record<string, any> = { staged: 'warning', approved: 'success', partial: 'default', reverted: 'default', discarded: 'default' };
@@ -15,14 +16,23 @@ const toB64 = (f: File) => new Promise<string>((res, rej) => { const r = new Fil
 
 export default function StatementImport() {
   const t = useT();
-  const history = useApi<any[]>('/imports');
+  const [mode, setMode] = useState<'statement' | 'credit'>(() => (location.hash === '#credit' ? 'credit' : 'statement'));
+  return <div className="space-y-5">
+    <PageHeader title={t('imp.title')} subtitle={t('imp.subtitle')} actions={<Tabs value={mode} onChange={(m) => { setMode(m); window.history.replaceState(null, '', m === 'credit' ? '#credit' : '#'); }} options={[{ value: 'statement', label: t('imp.tab.statement') }, { value: 'credit', label: t('imp.tab.credit') }]} />} />
+    {mode === 'statement' ? <Statements /> : <CreditImport />}
+  </div>;
+}
+
+function Statements() {
+  const t = useT();
+  const batches = useApi<any[]>('/imports');
   const [sel, setSel] = useState<number | null>(null);
   const [account, setAccount] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { run } = useAction();
-  const current = sel ?? history.data?.[0]?.id ?? null;
+  const current = sel ?? batches.data?.[0]?.id ?? null;
 
   async function upload(f: File | undefined) {
     if (!f) return;
@@ -33,7 +43,6 @@ export default function StatementImport() {
   }
 
   return <div className="space-y-5">
-    <PageHeader title={t('imp.title')} subtitle={t('imp.subtitle')} />
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <div onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files[0]); }}
         onClick={() => fileRef.current?.click()} className={cn('cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition', drag ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50')}>
@@ -43,9 +52,9 @@ export default function StatementImport() {
       </div>
       <Card title={t('imp.account')}><AccountSelect value={account} onChange={setAccount} /><p className="mt-3 flex gap-2 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0 text-success" />{t('imp.notice')}</p></Card>
     </div>
-    {history.isLoading ? <Spinner /> : !history.data?.length ? <Empty icon={<FileText className="h-8 w-8" />} title={t('imp.empty')} /> :
+    {batches.isLoading ? <Spinner /> : !batches.data?.length ? <Empty icon={<FileText className="h-8 w-8" />} title={t('imp.empty')} /> :
       <div className="grid gap-4 xl:grid-cols-[280px_1fr]">
-        <Card title={t('imp.history')}><ul className="space-y-1">{history.data.map((b) =>
+        <Card title={t('imp.history')}><ul className="space-y-1">{batches.data.map((b) =>
           <li key={b.id}><button onClick={() => setSel(b.id)} className={cn('w-full rounded-lg p-2 text-left text-sm transition', current === b.id ? 'bg-muted' : 'hover:bg-muted/50')}>
             <div className="flex items-center justify-between gap-2"><span className="truncate font-medium">{b.filename}</span><Badge tone={statusTone[b.status]}>{t('imp.' + b.status)}</Badge></div>
             <div className="text-xs text-muted-foreground">{b.bank} · {b.row_count} · {dateFmt(b.created_at.slice(0, 10))}</div></button></li>)}</ul></Card>
