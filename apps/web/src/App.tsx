@@ -17,6 +17,7 @@ import Alerts from './pages/Alerts';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import StatementImport from './pages/StatementImport';
+import People from './pages/People';
 import Sync from './pages/Sync';
 import { queryClient } from './lib/hooks';
 
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="reports" element={<Reports />} />
         <Route path="sync" element={<Sync />} />
         <Route path="import" element={<StatementImport />} />
+        <Route path="people" element={<People />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Route>

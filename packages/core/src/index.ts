@@ -9,3 +9,4 @@ export * from './insights';
 export * from './categorize';
 export * from './textnorm';
 export * from './classify';
+export * from './matching';

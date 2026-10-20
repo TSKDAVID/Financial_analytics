@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { b64ToBytes } from './lines';
 import type { DB } from '../schema';
-import { importPdf, updateRow, approve, revert, discard, analyze, runAi, detectDuplicates, learnedMap } from './service';
+import { importPdf, updateRow, approve, revert, discard, analyze, runAi, detectDuplicates, learnedMap, rematch, decideMatch, clusters, people } from './service';
+import { TX_KINDS } from '@fa/core';
 import { aiConfig, testConnection, type Provider } from './ai';
 import { getSetting } from '../schema';
 
@@ -11,11 +12,11 @@ function parse<T>(s: z.ZodType<T>, d: unknown): T { const r = s.safeParse(d); if
 const idP = (p: unknown) => parse(z.coerce.number().int().positive(), (p as { id: string }).id);
 
 export function importRoutes(app: FastifyInstance, db: DB) {
-  const batch = (id: number) => { const b = db.prepare('SELECT * FROM import_batches WHERE id = ?').get(id) as any; if (!b) throw bad('Import not found', 404); return { ...b, warnings: JSON.parse(b.warnings || '[]') }; };
+  const batch = (id: number) => { const b = db.prepare('SELECT * FROM import_batches WHERE id = ?').get(id) as any; if (!b) throw bad('Import not found', 404); return { ...b, warnings: JSON.parse(b.warnings || '[]'), verification: b.verification ? JSON.parse(b.verification) : null }; };
   const stats = (id: number) => db.prepare(`SELECT COUNT(*) AS total, SUM(excluded = 0) AS included, SUM(duplicate_of IS NOT NULL) AS duplicates, SUM(transaction_id IS NOT NULL) AS posted, SUM(confidence < 0.6 AND excluded = 0) AS low,
       ROUND(SUM(CASE WHEN kind='expense' AND excluded = 0 THEN amount ELSE 0 END), 2) AS expense, ROUND(SUM(CASE WHEN kind='income' AND excluded = 0 THEN amount ELSE 0 END), 2) AS income FROM import_rows WHERE batch_id = ?`).get(id);
 
-  app.get('/api/imports', async () => (db.prepare("SELECT * FROM import_batches ORDER BY id DESC").all() as any[]).map((b) => ({ ...b, warnings: JSON.parse(b.warnings || '[]'), stats: stats(b.id) })));
+  app.get('/api/imports', async () => (db.prepare("SELECT * FROM import_batches ORDER BY id DESC").all() as any[]).map((b) => ({ ...b, warnings: JSON.parse(b.warnings || '[]'), verification: b.verification ? JSON.parse(b.verification) : null, stats: stats(b.id) })));
   app.post('/api/imports', async (req) => {
     const body = parse(z.object({ filename: z.string().min(1).max(255), data: z.string().min(10), account_id: z.number().int().positive().nullable().optional(), ai: z.boolean().optional() }), req.body);
     const bytes = b64ToBytes(body.data);
@@ -24,12 +25,14 @@ export function importRoutes(app: FastifyInstance, db: DB) {
   });
   app.get('/api/imports/:id', async (req) => {
     const id = idP(req.params);
-    const rows = db.prepare(`SELECT r.*, c.name AS category_name, c.color AS category_color, t.date AS dup_date, t.description AS dup_description FROM import_rows r LEFT JOIN categories c ON c.id = r.category_id
-      LEFT JOIN transactions t ON t.id = r.duplicate_of WHERE r.batch_id = ? ORDER BY r.idx`).all(id);
+    const rows = db.prepare(`SELECT r.*, c.name AS category_name, c.color AS category_color, t.date AS dup_date, t.description AS dup_description,
+      (SELECT m.id FROM import_matches m WHERE (m.out_row_id = r.id OR m.in_row_id = r.id) AND m.status != 'rejected' ORDER BY m.status = 'confirmed' DESC LIMIT 1) AS match_id,
+      (SELECT m.status FROM import_matches m WHERE (m.out_row_id = r.id OR m.in_row_id = r.id) AND m.status != 'rejected' ORDER BY m.status = 'confirmed' DESC LIMIT 1) AS match_status
+      FROM import_rows r LEFT JOIN categories c ON c.id = r.category_id LEFT JOIN transactions t ON t.id = r.duplicate_of WHERE r.batch_id = ? ORDER BY r.idx`).all(id);
     return { ...batch(id), stats: stats(id), rows };
   });
   app.get('/api/imports/:id/analysis', async (req) => analyze(db, idP(req.params)));
-  const rowPatch = z.object({ category_id: z.number().int().positive().nullable().optional(), account_id: z.number().int().positive().nullable().optional(), excluded: z.boolean().optional(), kind: z.enum(['income', 'expense']).optional() });
+  const rowPatch = z.object({ category_id: z.number().int().positive().nullable().optional(), account_id: z.number().int().positive().nullable().optional(), excluded: z.boolean().optional(), kind: z.enum(['income', 'expense']).optional(), tx_kind: z.enum(TX_KINDS).optional() });
   app.put('/api/imports/rows/:id', async (req) => {
     const rid = idP(req.params);
     const r = db.prepare('SELECT transaction_id FROM import_rows WHERE id = ?').get(rid) as { transaction_id: number | null } | undefined;
@@ -58,8 +61,24 @@ export function importRoutes(app: FastifyInstance, db: DB) {
   });
   app.post('/api/imports/:id/revert', async (req) => revert(db, idP(req.params)));
   app.post('/api/imports/:id/discard', async (req) => { discard(db, idP(req.params)); return { ok: true }; });
-  app.get('/api/merchant-rules', async () => db.prepare('SELECT m.*, c.name AS category_name FROM merchant_rules m JOIN categories c ON c.id = m.category_id ORDER BY m.updated_at DESC').all());
-  app.delete('/api/merchant-rules/:merchant', async (req) => { db.prepare('DELETE FROM merchant_rules WHERE merchant = ?').run((req.params as { merchant: string }).merchant); return { ok: true, count: learnedMap(db).size }; });
+  app.get('/api/merchant-rules', async () => db.prepare('SELECT m.merchant_key AS merchant, m.label, m.tx_kind, m.category_id, m.hits, m.updated_at, c.name AS category_name FROM learned_rules m LEFT JOIN categories c ON c.id = m.category_id ORDER BY m.updated_at DESC').all());
+  app.delete('/api/merchant-rules/:merchant', async (req) => { const k = (req.params as { merchant: string }).merchant; db.prepare('DELETE FROM learned_rules WHERE merchant_key = ?').run(k); db.prepare('DELETE FROM ai_cache WHERE merchant_key = ?').run(k); return { ok: true, count: learnedMap(db).size }; });
+
+  // ---------- smart grouping, transfer matching and people ----------
+  app.get('/api/imports/:id/clusters', async (req) => clusters(db, idP(req.params)));
+  app.post('/api/imports/rematch', async () => ({ proposed: rematch(db) }));
+  app.put('/api/imports/matches/:id', async (req) => decideMatch(db, idP(req.params), parse(z.object({ status: z.enum(['confirmed', 'rejected', 'proposed']) }), req.body).status));
+  app.post('/api/imports/matches/decide', async (req) => {
+    const b = parse(z.object({ ids: z.array(z.number().int().positive()).min(1), status: z.enum(['confirmed', 'rejected', 'proposed']) }), req.body);
+    return { ok: true, updated: b.ids.map((i) => decideMatch(db, i, b.status)).length };
+  });
+  app.get('/api/people', async () => people(db));
+  app.put('/api/people/:key', async (req) => {
+    const key = decodeURIComponent((req.params as { key: string }).key);
+    const b = parse(z.object({ pattern: z.enum(['lent_repaid', 'lent_open', 'borrowed', 'shared', 'one_way_out', 'one_way_in']).nullable().optional(), hidden: z.boolean().optional() }), req.body);
+    db.prepare('INSERT INTO people_overrides (person_key, pattern, hidden) VALUES (?,?,?) ON CONFLICT(person_key) DO UPDATE SET pattern = excluded.pattern, hidden = excluded.hidden').run(key, b.pattern ?? null, b.hidden ? 1 : 0);
+    return { ok: true };
+  });
 
   // ---------- AI provider ----------
   const override = z.object({ provider: z.enum(['ollama', 'openai', 'groq']).optional(), baseUrl: z.string().url().optional(), model: z.string().optional(), apiKey: z.string().optional() }).default({});

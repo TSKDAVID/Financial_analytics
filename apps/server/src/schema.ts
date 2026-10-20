@@ -78,6 +78,9 @@ export const BUILTIN_CATEGORIES: BuiltinCat[] = [
   { key: 'rental', name: 'Rental', kind: 'income', color: '#6366f1', icon: 'home' },
   { key: 'gifts', name: 'Gifts', kind: 'income', color: '#ec4899', icon: 'gift' },
   { key: 'other_income', name: 'Other income', kind: 'income', color: '#84cc16', icon: 'plus-circle' },
+  { key: 'p2p_in', name: 'From people', kind: 'income', color: '#2dd4bf', icon: 'users' },
+  { key: 'interest_income', name: 'Interest', kind: 'income', color: '#4ade80', icon: 'percent' },
+  { key: 'refunds', name: 'Refunds & cashback', kind: 'income', color: '#a3e635', icon: 'rotate-ccw' },
   { key: 'loans', name: 'Loans', kind: 'expense', color: '#ef4444', icon: 'landmark', essential: true },
   { key: 'subscriptions', name: 'Subscriptions', kind: 'expense', color: '#a855f7', icon: 'repeat' },
   { key: 'utilities', name: 'Utilities', kind: 'expense', color: '#f59e0b', icon: 'zap', essential: true },
@@ -94,6 +97,12 @@ export const BUILTIN_CATEGORIES: BuiltinCat[] = [
   { key: 'education', name: 'Education', kind: 'expense', color: '#3b82f6', icon: 'graduation-cap' },
   { key: 'entertainment', name: 'Entertainment', kind: 'expense', color: '#d946ef', icon: 'film' },
   { key: 'shopping', name: 'Shopping', kind: 'expense', color: '#f97316', icon: 'shopping-bag' },
+  { key: 'dining', name: 'Dining & cafés', kind: 'expense', color: '#fb7185', icon: 'utensils' },
+  { key: 'travel', name: 'Travel', kind: 'expense', color: '#0891b2', icon: 'plane' },
+  { key: 'cash', name: 'Cash withdrawals', kind: 'expense', color: '#78716c', icon: 'banknote' },
+  { key: 'fees', name: 'Bank fees', kind: 'expense', color: '#9ca3af', icon: 'receipt' },
+  { key: 'taxes', name: 'Taxes & government', kind: 'expense', color: '#475569', icon: 'landmark' },
+  { key: 'p2p_out', name: 'To people', kind: 'expense', color: '#5eead4', icon: 'users' },
   { key: 'other_expense', name: 'Other', kind: 'expense', color: '#94a3b8', icon: 'circle' },
 ];
 

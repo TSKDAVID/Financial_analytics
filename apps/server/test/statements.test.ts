@@ -93,7 +93,7 @@ describe('import approval workflow', () => {
     expect(mystery.confidence).toBeLessThan(0.6);
     const shopping = (db.prepare("SELECT id FROM categories WHERE key = 'shopping'").get() as { id: number }).id;
     await call('PUT', `/api/imports/rows/${mystery.id}`, { category_id: shopping });
-    expect((db.prepare('SELECT category_id FROM merchant_rules').get() as any).category_id).toBe(shopping);
+    expect((db.prepare('SELECT category_id FROM learned_rules').get() as any).category_id).toBe(shopping);
     const an = (await call('GET', `/api/imports/${up.body.id}/analysis`)).body;
     expect(an.totals.income).toBe(3200); expect(an.byCategory.length).toBeGreaterThan(0);
     // approve selected

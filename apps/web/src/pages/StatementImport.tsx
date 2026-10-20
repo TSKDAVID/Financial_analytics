@@ -9,6 +9,8 @@ import { money, dateFmt } from '../lib/format';
 import { Button, Card, Badge, PageHeader, Empty, Spinner, Tabs, Stat, th, td, cn } from '../components/ui';
 import { CategorySelect, AccountSelect } from '../components/pickers';
 import CreditImport from './CreditImport';
+import { SmartGroups, PeopleList } from '../components/ImportGroups';
+import { TX_KINDS, isNonPL } from '@fa/core';
 import { InsightList, CHART_COLORS, axis, grid, tooltipStyle } from '../components/shared';
 
 const statusTone: Record<string, any> = { staged: 'warning', approved: 'success', partial: 'default', reverted: 'default', discarded: 'default' };
@@ -66,12 +68,12 @@ function Statements() {
 function BatchView({ id }: { id: number }) {
   const t = useT();
   const b = useApi<any>(`/imports/${id}`);
-  const [tab, setTab] = useState<'rows' | 'analysis'>('rows');
-  const [filter, setFilter] = useState<'all' | 'low' | 'dup' | 'excl'>('all');
+  const [tab, setTab] = useState<'rows' | 'groups' | 'people' | 'analysis'>('rows');
+  const [filter, setFilter] = useState<'all' | 'low' | 'internal' | 'dup' | 'excl'>('all');
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const { run, busy } = useAction();
   const rows: any[] = b.data?.rows ?? [];
-  const shown = useMemo(() => rows.filter((r) => filter === 'all' || (filter === 'low' && r.confidence < 0.6) || (filter === 'dup' && r.duplicate_of) || (filter === 'excl' && r.excluded)), [rows, filter]);
+  const shown = useMemo(() => rows.filter((r) => filter === 'all' || (filter === 'low' && r.confidence < 0.6) || (filter === 'internal' && (isNonPL(r.tx_kind ?? '') || r.match_id)) || (filter === 'dup' && r.duplicate_of) || (filter === 'excl' && r.excluded)), [rows, filter]);
   if (!b.data) return <Spinner />;
   const d = b.data; const s = d.stats;
   const locked = d.status === 'discarded';
@@ -93,31 +95,39 @@ function BatchView({ id }: { id: number }) {
         <Stat label={t('imp.rows')} value={s.total} /><Stat label={t('common.expense')} value={money(s.expense, d.currency)} /><Stat label={t('common.income')} value={money(s.income, d.currency)} />
         <Stat label={t('imp.duplicates')} value={s.duplicates ?? 0} /><Stat label={t('imp.posted')} value={`${s.posted ?? 0}/${s.included ?? 0}`} />
       </div>
+      {d.verification && <p className={cn('mt-3 flex items-center gap-2 text-sm', d.verification.totals.every((v: any) => v.ok) && !d.verification.mismatches ? 'text-success' : 'text-warning')}><ShieldCheck className="h-4 w-4" />
+        {d.verification.totals.every((v: any) => v.ok) && !d.verification.mismatches ? t('imp.verified', { n: d.verification.totals.length + (d.verification.dailyChecks || d.verification.runningChecks || 0) }) : t('imp.notVerified')}
+        <span className="text-xs text-muted-foreground">{d.verification.totals.map((v: any) => `${v.currency} ${v.count}`).join(' · ')}</span></p>}
       {d.warnings?.map((w: string) => <p key={w} className="mt-3 text-sm text-warning">{w}</p>)}
       {d.ai_note && <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5" />{d.ai_note}</p>}
     </Card>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <Tabs value={tab} onChange={setTab} options={[{ value: 'rows', label: t('imp.rows') }, { value: 'analysis', label: t('imp.analysis') }]} />
+      <Tabs value={tab} onChange={setTab} options={[{ value: 'rows', label: t('imp.rows') }, { value: 'groups', label: t('imp.tab.groups') }, { value: 'people', label: t('imp.tab.people') }, { value: 'analysis', label: t('imp.analysis') }]} />
       {tab === 'rows' && <div className="flex flex-wrap gap-2">
-        <Tabs value={filter} onChange={setFilter} options={(['all', 'low', 'dup', 'excl'] as const).map((v) => ({ value: v, label: t('imp.filter.' + v) }))} />
+        <Tabs value={filter} onChange={setFilter} options={(['all', 'low', 'internal', 'dup', 'excl'] as const).map((v) => ({ value: v, label: t('imp.filter.' + v) }))} />
         {!locked && (s.low ?? 0) > 0 && <Button size="sm" variant="outline" disabled={busy} onClick={() => run(() => post(`/imports/${id}/ai`))}><Sparkles className="h-4 w-4" />{t('imp.runAi')}</Button>}
       </div>}
     </div>
     {tab === 'rows' ? <Card className="p-0 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
       <thead className="border-b bg-muted/40"><tr><th className={th}><input type="checkbox" aria-label="select all" checked={shown.length > 0 && shown.every((r) => picked.has(r.id))} onChange={(e) => setPicked(e.target.checked ? new Set(shown.map((r) => r.id)) : new Set())} /></th>
-        <th className={th}>{t('common.date')}</th><th className={th}>{t('common.description')}</th><th className={cn(th, 'text-right')}>{t('common.amount')}</th><th className={th}>{t('common.category')}</th><th className={th}>{t('imp.conf')}</th><th className={th}>{t('nav.accounts')}</th><th className={th}></th></tr></thead>
-      <tbody>{shown.map((r) => <tr key={r.id} className={cn('border-b last:border-0', r.excluded && 'opacity-50', r.transaction_id && 'bg-success/5')}>
+        <th className={th}>{t('common.date')}</th><th className={th}>{t('common.description')}</th><th className={cn(th, 'text-right')}>{t('common.amount')}</th><th className={th}>{t('imp.kind')}</th><th className={th}>{t('common.category')}</th><th className={th}>{t('imp.conf')} · {t('imp.why')}</th><th className={th}>{t('nav.accounts')}</th><th className={th}></th></tr></thead>
+      <tbody>{shown.map((r) => <tr key={r.id} className={cn('border-b last:border-0', r.excluded && 'opacity-50', r.transaction_id && 'bg-success/5', !r.transaction_id && !r.excluded && r.confidence < 0.6 && 'bg-warning/10')}>
         <td className={td}><input type="checkbox" aria-label="select row" checked={picked.has(r.id)} onChange={() => toggle(r.id)} /></td>
         <td className={cn(td, 'whitespace-nowrap')}>{dateFmt(r.date)}</td>
         <td className={cn(td, 'max-w-[280px]')}><div className="truncate" title={r.raw}>{r.description}</div>
           {r.duplicate_of && <div className="flex items-center gap-1 text-xs text-warning"><Copy className="h-3 w-3" />{t('imp.dup', { date: dateFmt(r.dup_date), desc: r.dup_description ?? '' })}</div>}
           {r.subscription ? <Badge className="mt-1">↻</Badge> : null}</td>
         <td className={cn(td, 'num text-right whitespace-nowrap', r.kind === 'income' ? 'text-success' : '')}>{r.kind === 'income' ? '+' : '−'}{money(r.amount, r.currency)}</td>
-        <td className={cn(td, 'min-w-[170px]')}>{r.transaction_id || locked ? (r.category_name ?? '—') : <CategorySelect value={r.category_id} kind={r.kind} onChange={(v) => patch(r, { category_id: v })} />}</td>
-        <td className={td}><div className="flex items-center gap-1.5"><div className="h-1.5 w-10 rounded bg-muted"><div className={cn('h-1.5 rounded', r.confidence >= 0.8 ? 'bg-success' : r.confidence >= 0.6 ? 'bg-warning' : 'bg-danger')} style={{ width: `${Math.round(r.confidence * 100)}%` }} /></div><span className="text-xs text-muted-foreground">{t('imp.src.' + r.source)}</span></div></td>
+        <td className={cn(td, 'min-w-[150px]')}>{r.transaction_id || locked ? t('kind.' + (r.tx_kind ?? 'purchase')) :
+          <select aria-label={t('imp.kind')} className="h-8 w-full rounded-md border bg-background px-2 text-xs" value={r.tx_kind ?? ''} onChange={(e) => patch(r, { tx_kind: e.target.value })}>
+            {TX_KINDS.map((k) => <option key={k} value={k}>{t('kind.' + k)}</option>)}</select>}
+          {r.match_id ? <Badge className="mt-1" tone={r.match_status === 'confirmed' ? 'success' : 'default'}>⇄ {t('imp.g.' + r.match_status)}</Badge> : null}</td>
+        <td className={cn(td, 'min-w-[170px]')}>{isNonPL(r.tx_kind ?? '') ? <span className="text-xs text-muted-foreground">—</span> : r.transaction_id || locked ? (r.category_name ?? '—') : <CategorySelect value={r.category_id} kind={r.kind} onChange={(v) => patch(r, { category_id: v })} />}</td>
+        <td className={td}><div className="flex items-center gap-1.5"><div className="h-1.5 w-10 rounded bg-muted"><div className={cn('h-1.5 rounded', r.confidence >= 0.8 ? 'bg-success' : r.confidence >= 0.6 ? 'bg-warning' : 'bg-danger')} style={{ width: `${Math.round(r.confidence * 100)}%` }} /></div><span className="text-xs text-muted-foreground">{Math.round(r.confidence * 100)}% · {t('imp.src.' + r.source)}</span></div>
+          {r.why && <div className="max-w-[220px] truncate text-xs text-muted-foreground" title={r.why}>{r.why}</div>}</td>
         <td className={cn(td, 'min-w-[140px]')}>{r.transaction_id || locked ? '' : <AccountSelect value={r.account_id} onChange={(v) => patch(r, { account_id: v })} />}</td>
         <td className={td}>{r.transaction_id ? <Badge tone="success">✓</Badge> : !locked && <Button size="sm" variant="ghost" onClick={() => patch(r, { excluded: !r.excluded })}>{r.excluded ? t('imp.include') : t('imp.excluded')}</Button>}</td>
-      </tr>)}</tbody></table></div></Card> : <Analysis id={id} currency={d.currency} />}
+      </tr>)}</tbody></table></div></Card> : tab === 'groups' ? <SmartGroups id={id} locked={locked} /> : tab === 'people' ? <PeopleList /> : <Analysis id={id} currency={d.currency} />}
   </div>;
 }
 
@@ -130,6 +140,10 @@ function Analysis({ id }: { id: number; currency: string }) {
     <div className="grid grid-cols-2 gap-3 lg:col-span-2 md:grid-cols-4">
       <Stat label={t('common.expense')} value={money(x.totals.expense)} /><Stat label={t('common.income')} value={money(x.totals.income)} /><Stat label="Net" value={money(x.totals.net, 'GEL', { sign: true })} /><Stat label={t('imp.avgDay')} value={money(x.totals.avgPerDay)} />
     </div>
+    {x.excluded && <Card className="lg:col-span-2"><ul className="space-y-1 text-sm text-muted-foreground">
+      <li>{t('imp.excludedInternal', { amount: money(x.excluded.internal), n: x.excluded.internalCount })}</li>
+      {x.excluded.friends > 0 && <li>{t('imp.friendsNetted', { amount: money(x.excluded.friends) })}</li>}
+      {x.excluded.receivable > 0 && <li>{t('imp.receivable', { amount: money(x.excluded.receivable) })}</li>}</ul></Card>}
     <Card title={t('imp.insights')} className="lg:col-span-2"><InsightList items={x.insights} /></Card>
     <Card title={t('imp.byCategory')}><div className="h-64"><ResponsiveContainer><PieChart><Pie data={x.byCategory} dataKey="total" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
       {x.byCategory.map((c: any, i: number) => <Cell key={i} fill={c.color ?? CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie><Tooltip {...tooltipStyle} formatter={(v: number) => money(v)} /></PieChart></ResponsiveContainer></div>

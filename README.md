@@ -131,6 +131,16 @@ API base: `http://localhost:5317/api` (e.g. `/dashboard`, `/transactions`, `/for
 - **Approval workflow:** an import is *staged* in separate tables and changes nothing (dashboard, balances, budgets, forecasts, alerts) until you approve it. You can edit category or account, exclude rows, and see rows flagged as duplicates of existing transactions (same amount, currency, direction and date ±1 day; these are excluded automatically). Approve all rows or only selected ones. Each approved import is a batch: **Revert import** removes exactly its transactions, and you can approve it again later. Import history shows each batch's status.
 - **Analysis:** totals by category, top merchants, recurring/subscription detection, weekday and weekly patterns, and plain-language insights.
 
+### Bank of Georgia & TBC statements: kinds, matching, people
+- **Exact parsers** for BOG and TBC PDF statements. Each import is checked: opening balance + rows = closing balance per currency, plus BOG daily balances / totals and TBC running balance. The result shows as "Balances verified".
+- **Kind first, then category.** Every row gets a kind (purchase, subscription, bill, top-up, cash, sent to / from a person, own transfer / ყულაბა savings / deposit, exchange, salary, loan, fee, interest, refund) with a confidence and a "why". Own transfers, savings and exchanges are not income or spending and are posted as transfers.
+- **Matching rules**: Georgian-aware whole-word matching with transliteration (ნიკორა = nikora), negative keywords, MCC codes, the bank's own category, your own name/IBAN. Corrections you make (kind or category) win over everything and are learned per merchant.
+- **AI fallback** (optional, local Ollama by default): only low-confidence rows, one question per merchant, answers cached; it only sees merchant text and amounts (IBANs and long numbers masked).
+- **Transfers between your banks** (e.g. TBC → BOG via EGREVE / P2P) are matched across imports and manual transactions: ±3 days, fee tolerance (default 2 GEL or 1%, settings `transferFeeAbs` / `transferFeePct`), cross-currency via the NBG rate. Confirmed pairs are posted once as a transfer; the difference is recorded as a "Transfer fee" expense.
+- **Smart groups** tab in the import preview: transfers, own-account moves, people, recurring merchants and subscriptions, each with confirm / reject.
+- **People** page: transfers grouped by person (Georgian/Latin names match), lent & repaid / still owed / split, history and balance. Money lent and paid back is not counted as spending.
+- Nothing is applied until you approve an import, and every approval can be reverted.
+
 ## Phone reminders work with the PC off
 
 The Android app schedules **local notifications** (on start, on resume, in the background and after every sync) for all unpaid bills, loan payments and subscription charges in the next 60 days. You get one at 09:00 the day before and one at 09:00 on the due date. They are rescheduled on every sync, so changes on the desktop are picked up. They fire from the phone itself even when the PC is off. Budget, risk and low-balance alerts are evaluated on the phone too.
