@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { ArrowLeftRight, Check, X, Users, Repeat, PiggyBank } from 'lucide-react';
 import { useT } from '../lib/i18n';
 import { useApi, useAction } from '../lib/hooks';
-import { post, put } from '../lib/api';
-import { money, dateFmt } from '../lib/format';
+import { post, put, qs } from '../lib/api';
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { RangePicker, rangeOf, type RangeKey } from './RangePicker';
+import { SharePie } from './SharePie';
+import { InsightList, axis, tooltipStyle } from './shared';
+import { money, dateFmt, monthFmt } from '../lib/format';
 import { Button, Card, Badge, Spinner, Stat, cn } from './ui';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -63,26 +67,35 @@ export function SmartGroups({ id, locked }: { id: number; locked: boolean }) {
 /** Everyone you exchanged money with, across all imports. */
 export function PeopleList() {
   const t = useT();
-  const p = useApi<any>('/people');
+  const [range, setRange] = useState<RangeKey>('12m');
+  const r = rangeOf(range);
+  const p = useApi<any>(`/people${qs({ from: r.from, to: r.to })}`);
   const { run, busy } = useAction();
-  const [sort, setSort] = useState<'sent' | 'received' | 'total' | 'net'>('sent');
+  const [sort, setSort] = useState<'total' | 'sent' | 'received'>('total');
   if (!p.data) return <Spinner />;
   const d = p.data;
-  const ranked = [...d.people].filter((x: any) => !x.hidden).sort((a: any, b: any) => sort === 'net' ? Math.abs(b.net) - Math.abs(a.net) : (b[sort] ?? b.sent + b.received) - (a[sort] ?? a.sent + a.received));
-  if (!d.people.length) return <Card><p className="text-sm text-muted-foreground">{t('ppl.empty')}</p></Card>;
+  const ranked = [...d.people].filter((x: any) => !x.hidden).sort((a: any, b: any) => b[sort] - a[sort]);
+  const share = (k: 'sent' | 'received') => { const l = [...ranked].sort((a: any, b: any) => b[k] - a[k]).filter((x: any) => x[k] > 0); const top = l.slice(0, 7).map((x: any) => ({ name: x.name, total: x[k] })); const rest = l.slice(7).reduce((s: number, x: any) => s + x[k], 0); return rest > 0 ? [...top, { name: 'Other', total: rest }] : top; };
   return <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-3"><Stat label={t('ppl.owedToYou')} value={money(d.owedToYou)} /><Stat label={t('ppl.youOwe')} value={money(d.youOwe)} /></div>
-    <div className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">{t('ppl.sort')}</span>{(['sent', 'received', 'total', 'net'] as const).map((k) => <Button key={k} size="sm" variant={sort === k ? 'primary' : 'outline'} onClick={() => setSort(k)}>{t('ppl.sort.' + k)}</Button>)}</div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="max-w-2xl text-xs text-muted-foreground">{t('ppl.flowNote')}</p><RangePicker value={range} onChange={setRange} /></div>
+    {!d.people.length ? <Card><p className="text-sm text-muted-foreground">{t('ppl.empty')}</p></Card> : <>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3"><Stat label={t('ppl.sent')} value={money(d.sent)} /><Stat label={t('ppl.received')} value={money(d.received)} /><Stat label={t('ppl.flow')} value={money(d.flowTotal)} /><Stat label={t('ppl.rentTotal')} value={money(d.rentTotal)} /></div>
+    <div className="grid gap-4 lg:grid-cols-2"><Card><SharePie title={t('ppl.shareSent')} data={share('sent')} /></Card><Card><SharePie title={t('ppl.shareReceived')} data={share('received')} /></Card></div>
+    {!!d.insights?.length && <Card title={t('dash.insights')}><InsightList items={d.insights} max={6} /></Card>}
+    <div className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">{t('ppl.sort')}</span>{(['total', 'sent', 'received'] as const).map((k) => <Button key={k} size="sm" variant={sort === k ? 'primary' : 'outline'} onClick={() => setSort(k)}>{t('ppl.sort.' + k)}</Button>)}</div>
     <Card className="p-0"><ul className="divide-y text-sm">{ranked.map((x: any, idx: number) => <li key={x.key} className="p-3">
       <details><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
-        <span><span className="mr-1 text-xs text-muted-foreground">#{idx + 1}</span><b className="capitalize">{x.name}</b> <span className="text-xs text-muted-foreground">×{x.count} · {dateFmt(x.lastDate)} · {t('ppl.sent')} {money(x.sent)} · {t('ppl.received')} {money(x.received)}</span></span>
+        <span><span className="mr-1 text-xs text-muted-foreground">#{idx + 1}</span><b className="capitalize">{x.name}</b> <span className="text-xs text-muted-foreground">×{x.count} · {t('ppl.sent')} {money(x.sent)} · {t('ppl.received')} {money(x.received)}{x.turnaroundDays !== null ? ` · ${t('ppl.turnaround', { days: x.turnaroundDays })}` : ''} · {dateFmt(x.lastDate)}</span></span>
         <span className="flex items-center gap-2">
           <select aria-label="pattern" className="h-7 rounded-md border bg-background px-1 text-xs" value={x.pattern} disabled={busy} onClick={(e) => e.stopPropagation()}
             onChange={(e) => run(() => put(`/people/${encodeURIComponent(x.key)}`, { pattern: e.target.value }))}>
-            {['lent_repaid', 'lent_open', 'borrowed', 'shared', 'one_way_out', 'one_way_in'].map((k) => <option key={k} value={k}>{t('ppl.p.' + k)}</option>)}</select>
-          <span className={cn('num w-24 text-right', x.net > 0 ? 'text-success' : x.net < 0 ? 'text-danger' : '')}>{money(x.net, 'GEL', { sign: true })}</span></span></summary>
+            {['settles', 'rent', 'gift', 'income'].map((k) => <option key={k} value={k}>{t('ppl.p.' + k)}</option>)}</select>
+          <span className="num w-24 text-right">{money(x.total)}</span></span></summary>
+        {x.rentWhy && <p className="mt-1 text-xs text-muted-foreground">{t('ppl.detected', { why: x.rentWhy })}</p>}
+        {x.monthly?.length > 1 && <div className="mt-2 h-24"><ResponsiveContainer><BarChart data={x.monthly}><XAxis dataKey="month" {...axis} tickFormatter={(v) => monthFmt(v)} /><Tooltip {...tooltipStyle} formatter={(v: number) => money(v)} labelFormatter={(l) => monthFmt(l, false)} />
+          <Bar dataKey="sent" name={t('ppl.sent')} fill="#f97316" radius={[3, 3, 0, 0]} /><Bar dataKey="received" name={t('ppl.received')} fill="#10b981" radius={[3, 3, 0, 0]} /></BarChart></ResponsiveContainer></div>}
         <ul className="mt-2 space-y-0.5 text-xs">{x.items.map((i: any) => <li key={i.ref} className="flex justify-between gap-2 text-muted-foreground"><span>{dateFmt(i.date)}</span>
-          <span className={i.dir === 'in' ? 'text-success' : ''}>{i.dir === 'in' ? '+' : '−'}{money(i.amount, i.currency)}</span><span className="num">{t('ppl.net')} {money(i.running)}</span></li>)}</ul></details>
-    </li>)}</ul></Card>
+          <span className={i.dir === 'in' ? 'text-success' : ''}>{i.dir === 'in' ? '+' : '−'}{money(i.amount, i.currency)}</span></li>)}</ul></details>
+    </li>)}</ul></Card></>}
   </div>;
 }

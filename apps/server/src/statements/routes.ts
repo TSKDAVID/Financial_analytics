@@ -72,12 +72,12 @@ export function importRoutes(app: FastifyInstance, db: DB) {
     const b = parse(z.object({ ids: z.array(z.number().int().positive()).min(1), status: z.enum(['confirmed', 'rejected', 'proposed']) }), req.body);
     let n = 0; for (const i of b.ids) { await decideMatch(db, i, b.status); n++; } return { ok: true, updated: n };
   });
-  app.get('/api/people', async () => people(db));
+  app.get('/api/people', async (req) => { const q = req.query as any; const d = (x: any) => (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : undefined); return people(db, d(q?.from), d(q?.to)); });
   app.get('/api/maintenance/analytics-fix', async () => JSON.parse(getSetting(db, 'analyticsFix') ?? 'null'));
   app.post('/api/maintenance/analytics-fix/seen', async () => { const v = JSON.parse(getSetting(db, 'analyticsFix') ?? 'null'); if (v) setSetting(db, 'analyticsFix', JSON.stringify({ ...v, seen: true })); return { ok: true }; });
   app.put('/api/people/:key', async (req) => {
     const key = decodeURIComponent((req.params as { key: string }).key);
-    const b = parse(z.object({ pattern: z.enum(['lent_repaid', 'lent_open', 'borrowed', 'shared', 'one_way_out', 'one_way_in']).nullable().optional(), hidden: z.boolean().optional() }), req.body);
+    const b = parse(z.object({ pattern: z.enum(['settles', 'rent', 'gift', 'income']).nullable().optional(), hidden: z.boolean().optional() }), req.body);
     db.prepare('INSERT INTO people_overrides (person_key, pattern, hidden) VALUES (?,?,?) ON CONFLICT(person_key) DO UPDATE SET pattern = excluded.pattern, hidden = excluded.hidden').run(key, b.pattern ?? null, b.hidden ? 1 : 0);
     return { ok: true, ...refreshPeopleNetting(db) };
   });

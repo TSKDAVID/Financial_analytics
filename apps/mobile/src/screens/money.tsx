@@ -40,7 +40,10 @@ export function Dashboard({ nav }: ScreenProps) {
   </Screen>;
 }
 const INS: Record<string, string> = {
-  mTop: 'Your biggest merchant is {merchant}: {amount} ₾ ({pct}% of merchant spending) in {count} payments.', mHabit: 'Habit: {count} payments at {merchant}, about {avg} ₾ each — roughly {monthly} ₾ a month.',
+  mTop: 'Your biggest merchant is {merchant}: {amount} ₾ ({pct}% of merchant spending) in {count} payments.', mHabit: 'Habit: {count} payments at {merchant} (~{perWeek} a week), about {avg} ₾ each — roughly {monthly} ₾ a month.',
+  mBasket: 'Average basket: {list}.', mCatUp: '{category} is up {pct}%: about {now} ₾/month in the last 3 months vs {before} ₾ before.', mCatDown: '{category} is down {pct}%: about {now} ₾/month in the last 3 months vs {before} ₾ before.',
+  mSave: 'Where you could save: {merchant} costs about {monthly} ₾/month — 25% less would save ~{yearly} ₾ a year.', mWeekday: 'You spend most on {day}s — {pct}% above an average day.',
+  pTop: 'You exchange the most money with {name}: {amount} ₾ in {count} transfers.', pTurnaround: 'Money between you and friends usually comes back within {days} days.', pRent: 'Rent paid to {name}: {amount} ₾ (counted as spending).', pMonthly: 'About {amount} ₾ a month goes back and forth with {people} people — not counted as spending or income.',
   mUp: '{merchant}: {amount} ₾ this month, {pct}% more than your usual {usual} ₾.', mSmall: '{count} small payments (under 10 ₾ each) added up to {amount} ₾ — mostly {names}.',
   catAbove: '{category} spending is on track to be {pct}% above your usual {avg} ₾/month.', catBelow: 'Nice — {category} spending is {pct}% below your average this month.',
   seasonWinter: 'Your {category} bill rises every winter — plan for higher bills in Nov–Feb.', seasonSummer: 'Your {category} bill peaks in summer.',

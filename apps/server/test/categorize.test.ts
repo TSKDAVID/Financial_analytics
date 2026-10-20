@@ -37,7 +37,7 @@ describe('matching', () => {
   });
   it('people: lent and repaid nets to zero', () => {
     const p = groupPeople([{ ref: '1', date: '2026-01-01', amount: 100, currency: 'GEL', dir: 'out', counterparty: 'ნინო ბერიძე' }, { ref: '2', date: '2026-01-09', amount: 100, currency: 'GEL', dir: 'in', counterparty: 'NINO BERIDZE' }]);
-    expect(p).toHaveLength(1); expect(p[0]).toMatchObject({ pattern: 'lent_repaid', net: 0 });
+    expect(p).toHaveLength(1); expect(p[0]).toMatchObject({ pattern: 'settles', net: 0 });
   });
 });
 
@@ -63,7 +63,7 @@ describe('import pipeline', () => {
     expect(db.prepare('SELECT COUNT(*) FROM transactions').pluck().get()).toBe(0); // nothing applied yet
     const a: any = analyze(db, bog); expect(a.totals.expense).toBe(40); expect(a.excluded.internalCount).toBe(2);
     const t: any = analyze(db, tbc); expect(t.totals.expense).toBe(0); expect(t.excluded.friends).toBe(200);
-    expect((people(db) as any).people[0]).toMatchObject({ pattern: 'lent_repaid', net: 0 });
+    expect((people(db) as any).people[0]).toMatchObject({ pattern: 'settles', net: 0 });
     expect((clusters(db, tbc) as any).transfers).toHaveLength(1);
     await decideMatch(db, ms[0].id, 'confirmed');
     await approve(db, bog); await approve(db, tbc);

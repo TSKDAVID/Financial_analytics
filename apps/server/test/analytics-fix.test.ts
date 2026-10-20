@@ -69,7 +69,7 @@ describe('merchant stats, month summary and insights', () => {
 });
 
 describe('import fix', () => {
-  it('auto-confirms ≥90% own-account transfers, nets people only up to what came back, counts own cash deposits as income', async () => {
+  it('auto-confirms ≥90% own-account transfers, treats people as flows, counts own cash deposits as income', async () => {
     const db = openDb(':memory:');
     const bog = stageParsed(db, 'bog.pdf', stmt('Bank of Georgia', 'GE00BG0000000000000001', [
       row('2026-03-01', 'income', 50, 'ბანკებს შორის, ეგრევე 24/7', { opType: 'ჩარიცხვა' }),
@@ -85,9 +85,9 @@ describe('import fix', () => {
     await approve(db, bog); await approve(db, tbc); // no manual confirmation of the BOG/TBC pair
     expect(db.prepare("SELECT status FROM import_matches").pluck().all()).toEqual(['confirmed']);
     const sum = (k: string) => db.prepare('SELECT ROUND(COALESCE(SUM(amount_gel),0),2) FROM transactions WHERE kind = ?').pluck().get(k);
-    // the 50/51 pair is a transfer (+1 fee); 100 lent vs 60 back can't be netted leg by leg, so both stay and the net (−40) is right
-    expect(sum('income')).toBe(360); expect(sum('expense')).toBe(101);
-    expect((people(db) as any).people.map((p: any) => [p.sent, p.received])).toEqual([[100, 60], [70, 70]]); // ranked by sent; the 70/70 loan is netted out
+    // the 50/51 pair is a transfer (+1 fee); friends settle up, so every person-to-person leg is a flow, not P&L
+    expect(sum('income')).toBe(300); expect(sum('expense')).toBe(1);
+    expect((people(db) as any).people.map((p: any) => [p.sent, p.received])).toEqual([[100, 60], [70, 70]]); // ranked by total exchanged
     expect(await migrateAnalyticsFix(db)).toBeFalsy(); // fresh installs: already correct, migration is a no-op the second time
   });
 });
@@ -140,5 +140,41 @@ describe('recurring salary rule', () => {
     db.prepare('UPDATE recurring SET generated_until = NULL WHERE id = ?').run(rid); // e.g. after editing the rule
     await materialize(db);
     expect(db.prepare('SELECT COUNT(*) FROM transactions WHERE recurring_id = ?').pluck().get(rid)).toBe(0);
+  });
+});
+
+import { detectRent, groupPeople, canonicalMerchantKey, clusterMerchants, prettyMerchant, sameMerchant } from '@fa/core';
+describe('v1.3 people flows and rent', () => {
+  const f = (date: string, dir: 'in' | 'out', amount: number, text = '', who = 'ნინო ბერიძე') => ({ ref: date + dir + amount, date, amount, currency: 'GEL', dir, counterparty: who, text });
+  it('friends default to settles; rent is detected by wording or monthly similar payments', () => {
+    expect(groupPeople([f('2026-01-01', 'out', 300), f('2026-01-20', 'in', 250)])[0]).toMatchObject({ pattern: 'settles', turnaroundDays: 19 });
+    expect(detectRent([f('2026-01-05', 'out', 500, 'ბინის ქირა')])).toBeTruthy();
+    expect(detectRent(['2026-01-07', '2026-02-07', '2026-03-08', '2026-04-07'].map((d) => f(d, 'out', 500)))).toMatch(/monthly/);
+    expect(detectRent(['2026-01-07', '2026-01-09', '2026-03-28'].map((d) => f(d, 'out', 500)))).toBeNull();
+    expect(detectRent([...['2026-01-07', '2026-02-07', '2026-03-07'].map((d) => f(d, 'out', 500)), f('2026-03-10', 'in', 900)])).toBeNull(); // money comes back: not rent
+  });
+});
+describe('v1.3 merchant clustering', () => {
+  it('booking codes, shop words and spelling variants collapse; different categories stay apart', () => {
+    expect(canonicalMerchantKey('WIZZ AIR0000000JIPSQY')).toBe(canonicalMerchantKey('WIZZ AIR0000000BLDSJP'));
+    expect(canonicalMerchantKey('FRESCO SHOPING CENTER')).toBe(canonicalMerchantKey('Fresco'));
+    expect(sameMerchant(canonicalMerchantKey('Carrefour Zugdidi Mall'), canonicalMerchantKey('CARREFOUR'))).toBe(true);
+    const keys = ['bolt', 'bolt fod'].map((k) => canonicalMerchantKey(k));
+    const cats: Record<string, string> = { [keys[0]]: 'transport', [keys[1]]: 'dining' };
+    const c = clusterMerchants(keys, (k) => cats[k] ?? null); expect(c.get(keys[1])).toBe(keys[1]);
+    const manual = clusterMerchants(keys, (k) => cats[k] ?? null, new Map([[keys[1], keys[0]], [keys[0], keys[0]]])); expect(manual.get(keys[1])).toBe(keys[0]);
+    expect(prettyMerchant(new Map([['WIZZ AIR0000000JIPSQY', 2], ['WIZZ AIR0000000BLDSJP', 1]]))).toBe('Wizz Air');
+  });
+  it('merchant stats: merges, splits, subscriptions and pies', async () => {
+    const { mergeMerchants, splitMerchant } = await import('../src/merchants');
+    const db = openDb(':memory:'); const t = todayISO();
+    for (let k = 0; k < 4; k++) { tx(db, { kind: 'expense', amount: 15, date: addMonths(t, -k).slice(0, 8) + '03', description: 'SPOTIFY P1234567', category_id: cat(db, 'subscriptions') }); tx(db, { kind: 'expense', amount: 20 + k, date: addMonths(t, -k).slice(0, 8) + '04', description: 'FRESCO SHOPING CENTER', category_id: cat(db, 'groceries') }); tx(db, { kind: 'expense', amount: 30, date: addMonths(t, -k).slice(0, 8) + '05', description: 'Fresco', category_id: cat(db, 'groceries') }); }
+    let s = merchantStats(db, 6);
+    expect(s.merchants.map((m) => m.name).sort()).toEqual(['Fresco', 'Spotify']);
+    expect(s.subscriptions.map((x) => x.name)).toEqual(['Spotify']);
+    expect(s.byCategory.reduce((a, c) => a + c.total, 0)).toBeCloseTo(s.total, 2);
+    splitMerchant(db, canonicalMerchantKey('Fresco Shoping Center') === canonicalMerchantKey('Fresco') ? 'fresco' : canonicalMerchantKey('FRESCO SHOPING CENTER'));
+    mergeMerchants(db, [canonicalMerchantKey('SPOTIFY'), canonicalMerchantKey('Fresco')], canonicalMerchantKey('Fresco'), 'My store');
+    s = merchantStats(db, 6); expect(s.merchants).toHaveLength(1); expect(s.merchants[0].name).toBe('My store');
   });
 });

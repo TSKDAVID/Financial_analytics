@@ -1,4 +1,5 @@
 import { reconcileRecurring, restoreReconciled } from '../reconcile';
+import { normalizePattern } from '@fa/core';
 import { transactionDate } from './parse';
 import { classify, isNonPL, kindDirection, detectRecurring, addDays, matchTransfers, ibanBank, destinationBank, groupPeople, type TxKind, type Leg, type MatchOpts } from '@fa/core';
 import { getSetting, setSetting } from '../schema';
@@ -157,24 +158,25 @@ function unapplyPostedMatch(db: DB, m: any) {
 export function refreshPeopleNetting(db: DB) {
   const rows = db.prepare("SELECT id, date, amount_gel, currency, kind, counterparty, moved_from FROM transactions WHERE tx_kind IN ('transfer_out','transfer_in') AND counterparty IS NOT NULL AND (kind != 'transfer' OR moved_from LIKE '%\"reason\":\"people\"%')").all() as any[];
   const dirOf = (r: any) => (r.moved_from ? JSON.parse(r.moved_from).kind : r.kind) === 'income' ? 'in' : 'out';
-  const groups = groupPeople(rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount_gel, amountGel: r.amount_gel, currency: 'GEL', dir: dirOf(r), counterparty: r.counterparty })));
-  const ov = new Map((db.prepare('SELECT person_key, pattern FROM people_overrides').all() as any[]).map((o) => [o.person_key, o.pattern]));
+  const groups = groupPeople(rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount_gel, amountGel: r.amount_gel, currency: 'GEL', dir: dirOf(r), counterparty: r.counterparty, text: r.description ?? '' })));
+  const ov = new Map((db.prepare('SELECT person_key, pattern FROM people_overrides').all() as any[]).map((o) => [o.person_key, normalizePattern(o.pattern)]));
+  const rentCat = db.prepare("SELECT id FROM categories WHERE key = 'rent'").pluck().get() as number | undefined;
   let moved = 0, restored = 0;
   db.transaction(() => {
     for (const g of groups) {
       const pattern = ov.get(g.key) ?? g.pattern;
-      const two = pattern === 'lent_repaid' || pattern === 'lent_open' || pattern === 'borrowed';
-      // only the part that came back is netted out: the smaller side fully, the larger side up to that amount
-      const outs = g.items.filter((i) => i.dir === 'out'), ins = g.items.filter((i) => i.dir === 'in');
-      const cap = two ? Math.min(g.sent, g.received) : 0;
-      // pick legs on both sides until the two picked sums agree; netting unequal sums would distort the P&L
-      const v = (it: { amount: number; amountGel?: number }) => it.amountGel ?? it.amount;
-      const pick = (side: typeof outs, lim: number) => { const k: typeof outs = []; let acc = 0; for (const it of side) if (acc + v(it) <= lim + 0.01) { k.push(it); acc += v(it); } return { k, acc }; };
-      let po = pick(outs, cap), pi = pick(ins, cap);
-      for (let n = 0; n < 6 && Math.abs(po.acc - pi.acc) > 0.01; n++) { const lim = Math.min(po.acc, pi.acc); po = pick(outs, lim); pi = pick(ins, lim); }
-      const ok = po.acc > 0 && Math.abs(po.acc - pi.acc) <= Math.max(1, 0.02 * po.acc);
-      const keep = new Set<number>(ok ? [...po.k, ...pi.k].map((i) => Number(i.ref)) : []);
-      for (const it of g.items) { const id = Number(it.ref); if (keep.has(id)) { if (asTransfer(db, id, 'people')) moved++; } else if (restoreTx(db, id, 'people')) restored++; }
+      for (const it of g.items) {
+        const id = Number(it.ref);
+        const cur = db.prepare('SELECT moved_from FROM transactions WHERE id = ?').pluck().get(id) as string | null;
+        const reason = cur ? JSON.parse(cur).reason : null;
+        // settles: a flow, never P&L · rent: what you pay is rent spending · gift / income: stays spending / income
+        const want = pattern === 'settles' ? 'people' : pattern === 'rent' && it.dir === 'out' && rentCat ? 'people-rent' : null;
+        if (reason === want) continue;
+        if (reason === 'people' || reason === 'people-rent') { restoreTx(db, id, reason); restored++; }
+        if (want === 'people') { if (asTransfer(db, id, 'people')) moved++; }
+        else if (want === 'people-rent') { const t = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id) as any;
+          db.prepare('UPDATE transactions SET category_id = ?, moved_from = ? WHERE id = ?').run(rentCat, JSON.stringify({ kind: t.kind, account_id: t.account_id, to_account_id: t.to_account_id, category_id: t.category_id, reason: 'people-rent' }), id); moved++; }
+      }
     }
   })();
   return { moved, restored };
@@ -431,7 +433,8 @@ export function analyze(db: DB, batchId: number) {
   const moved = rows.filter(internal);
   // money lent to a friend and paid back is not spending either
   const people = peopleFrom(rows.filter((r) => !internal(r)));
-  const settled = new Set(people.filter((p) => p.pattern === 'lent_repaid' || p.pattern === 'borrowed' || p.pattern === 'lent_open').flatMap((p) => p.items.map((i) => Number(i.ref))));
+  const ovp = new Map((db.prepare('SELECT person_key, pattern FROM people_overrides').all() as any[]).map((o) => [o.person_key, normalizePattern(o.pattern)]));
+  const settled = new Set(people.filter((p) => (ovp.get(p.key) ?? p.pattern) === 'settles').flatMap((p) => p.items.map((i) => Number(i.ref))));
   const pl = rows.filter((r) => !internal(r) && !settled.has(r.id));
   const exp = pl.filter((r) => r.kind === 'expense'), inc = pl.filter((r) => r.kind === 'income');
   const sum = (a: any[]) => Math.round(a.reduce((s, r) => s + r.gel, 0) * 100) / 100;
@@ -465,7 +468,7 @@ export function analyze(db: DB, batchId: number) {
   const big = [...exp].sort((a, b) => b.gel - a.gel)[0];
   if (big && total && big.gel > total * 0.2) insights.push({ key: 'stBig', severity: 'warning', params: { description: big.description.slice(0, 40), amount: Math.round(big.gel), pct: Math.round((big.gel / total) * 100) } });
   const byKind = group(rows, (r) => (internal(r) && !isNonPL(r.tx_kind ?? '') ? 'internal' : r.tx_kind ?? r.kind));
-  const receivable = Math.round(people.filter((p) => p.net > 0 && p.pattern === 'lent_open').reduce((a, p) => a + p.net, 0) * 100) / 100;
+  const receivable = 0; // friends always settle up: flows, not debts
   return { excluded: { internal: sum(moved), internalCount: moved.length, friends: sum(rows.filter((r) => settled.has(r.id))), receivable }, byKind,
     totals: { expense: total, income: totalIn, net: Math.round((totalIn - total) * 100) / 100, count: rows.length, avgPerDay: Math.round((total / days) * 100) / 100, days: Math.round(days) },
     byCategory, topMerchants, dow: dow.map((v) => Math.round(v)), weekly, daily, recurring, subscriptions: group(subs, (r) => r.merchant || r.description), insights };
@@ -475,19 +478,35 @@ export function analyze(db: DB, batchId: number) {
 export function peopleFrom(rows: any[]) {
   const rates = new Map<string, number>();
   const flows = rows.map((r) => ({ ...r, counterparty: r.counterparty || (r.person ? (r.merchant || r.description || '').trim() : '') })).filter((r) => r.counterparty && r.person && !r.own && (r.tx_kind === 'transfer_out' || r.tx_kind === 'transfer_in'))
-    .map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, currency: r.currency, dir: (r.kind === 'income' ? 'in' : 'out') as 'in' | 'out', counterparty: r.counterparty, amountGel: r.gel ?? r.amount * (rates.get(r.currency) ?? 1) }));
+    .map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, currency: r.currency, dir: (r.kind === 'income' ? 'in' : 'out') as 'in' | 'out', counterparty: r.counterparty, text: r.description ?? '', amountGel: r.gel ?? r.amount * (rates.get(r.currency) ?? 1) }));
   return groupPeople(flows);
 }
-/** People view across every import that was not discarded, with your overrides applied. */
-export function people(db: DB) {
+/** People view across every import that was not discarded, with your choices applied; stats for an optional period. */
+export function people(db: DB, from?: string, to?: string) {
   const rates = latestRates(db);
   const rows = (db.prepare("SELECT r.* FROM import_rows r JOIN import_batches b ON b.id = r.batch_id WHERE b.status != 'discarded' AND r.excluded = 0 AND r.duplicate_of IS NULL").all() as any[])
     .map((r) => ({ ...r, gel: r.amount * (rates[r.currency] ?? 1) }));
   const ov = new Map((db.prepare('SELECT * FROM people_overrides').all() as any[]).map((o) => [o.person_key, o]));
-  const list = peopleFrom(rows).map((p) => ({ ...p, pattern: (ov.get(p.key)?.pattern ?? p.pattern) as typeof p.pattern, overridden: !!ov.get(p.key)?.pattern, hidden: !!ov.get(p.key)?.hidden, total: Math.round((p.sent + p.received) * 100) / 100 })).sort((a, b) => b.sent - a.sent);
-  const owedToYou = Math.round(list.filter((p) => p.net > 0 && p.pattern !== 'one_way_out' && p.pattern !== 'shared').reduce((a, p) => a + p.net, 0) * 100) / 100;
-  const youOwe = Math.round(list.filter((p) => p.net < 0 && p.pattern !== 'one_way_in' && p.pattern !== 'shared').reduce((a, p) => a - p.net, 0) * 100) / 100;
-  return { people: list, owedToYou, youOwe };
+  const inP = (d: string) => (!from || d >= from) && (!to || d <= to);
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const list = peopleFrom(rows).map((p) => {
+    const items = p.items.filter((i) => inP(i.date)); const v = (i: any) => i.amountGel ?? i.amount;
+    const sent = r2(items.filter((i) => i.dir === 'out').reduce((a, i) => a + v(i), 0)), received = r2(items.filter((i) => i.dir === 'in').reduce((a, i) => a + v(i), 0));
+    return { ...p, items, sent, received, net: r2(sent - received), count: items.length, total: r2(sent + received), monthly: p.monthly.filter((m) => inP(m.month + '-15')),
+      detected: p.pattern, pattern: normalizePattern(ov.get(p.key)?.pattern) ?? p.pattern, overridden: !!ov.get(p.key)?.pattern, hidden: !!ov.get(p.key)?.hidden };
+  }).filter((p) => p.count > 0).sort((a, b) => b.total - a.total);
+  const vis = list.filter((p) => !p.hidden);
+  const sum = (f: (p: any) => number, l = vis) => r2(l.reduce((a, p) => a + f(p), 0));
+  const flows = vis.filter((p) => p.pattern === 'settles');
+  const ta = flows.map((p) => p.turnaroundDays).filter((d): d is number => d !== null).sort((a, b) => a - b);
+  const insights: { key: string; severity: string; params: Record<string, string | number> }[] = [];
+  if (flows[0]) insights.push({ key: 'pTop', severity: 'info', params: { name: flows[0].name, amount: Math.round(flows[0].total), count: flows[0].count } });
+  if (ta.length >= 3) insights.push({ key: 'pTurnaround', severity: 'info', params: { days: ta[Math.floor(ta.length / 2)] } });
+  const rent = vis.filter((p) => p.pattern === 'rent'); if (rent.length) insights.push({ key: 'pRent', severity: 'info', params: { name: rent.map((p) => p.name).join(', '), amount: Math.round(sum((p) => p.sent, rent)) } });
+  const months = new Set(vis.flatMap((p) => p.monthly.map((m) => m.month))).size || 1;
+  insights.push({ key: 'pMonthly', severity: 'info', params: { amount: Math.round(sum((p) => p.total, flows) / months), people: flows.length } });
+  return { people: list, from: from ?? null, to: to ?? null, sent: sum((p) => p.sent), received: sum((p) => p.received), flowTotal: sum((p) => p.total, flows), rentTotal: sum((p) => p.sent, rent),
+    giftTotal: sum((p) => p.sent, vis.filter((p) => p.pattern === 'gift')), owedToYou: 0, youOwe: 0, insights };
 }
 
 /** Smart groups for the import preview; each can be confirmed or rejected in one click. */

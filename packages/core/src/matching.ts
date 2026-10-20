@@ -86,14 +86,47 @@ export function matchTransfers(legs: Leg[], opts: MatchOpts = {}): TransferMatch
   return out;
 }
 
-export interface PersonFlow { ref: string; date: string; amount: number; currency: string; dir: 'in' | 'out'; counterparty: string; amountGel?: number }
-export interface PersonSummary {
-  key: string; name: string; sent: number; received: number; net: number; count: number;
-  /** lent: money went out and (partly) came back; split: small amounts both ways; gift: only one direction */
-  pattern: 'lent_repaid' | 'lent_open' | 'borrowed' | 'shared' | 'one_way_out' | 'one_way_in';
-  items: (PersonFlow & { running: number })[]; lastDate: string;
+export interface PersonFlow { ref: string; date: string; amount: number; currency: string; dir: 'in' | 'out'; counterparty: string; amountGel?: number; text?: string }
+/**
+ * settles: money goes back and forth and is always settled — a flow, never spending, income or debt (default)
+ * rent:    you pay this person rent (detected automatically, can be changed) — spending
+ * gift:    one-off gifts/payments you made to them — spending (only when you mark it)
+ * income:  they pay you (e.g. for work) — income (only when you mark it)
+ */
+export type PersonPattern = 'settles' | 'rent' | 'gift' | 'income';
+export const PERSON_PATTERNS: PersonPattern[] = ['settles', 'rent', 'gift', 'income'];
+/** Older saved choices map onto the new ones. */
+export function normalizePattern(p?: string | null): PersonPattern | null {
+  if (!p) return null; if ((PERSON_PATTERNS as string[]).includes(p)) return p as PersonPattern;
+  return p === 'one_way_out' ? 'gift' : p === 'one_way_in' ? 'income' : 'settles';
 }
-/** Group person-to-person transfers by normalised name; net > 0 means they owe you. */
+export interface PersonSummary {
+  key: string; name: string; sent: number; received: number; net: number; count: number; pattern: PersonPattern; rentWhy?: string;
+  items: (PersonFlow & { running: number })[]; lastDate: string; firstDate: string;
+  /** median days from money going out to money coming back (or the other way), null if it never happened */
+  turnaroundDays: number | null; monthly: { month: string; sent: number; received: number }[];
+}
+const RENT_WORD = /ქირა|ქირის|\brent\b|\brental\b/i;
+/** Rent: a "rent" wording, or 3+ similar payments about a month apart with (almost) nothing coming back. */
+export function detectRent(s: PersonFlow[]): string | null {
+  const outs = s.filter((f) => f.dir === 'out'); const v = (f: PersonFlow) => f.amountGel ?? f.amount;
+  if (outs.some((f) => RENT_WORD.test(f.text ?? ''))) return 'description mentions rent';
+  const back = s.filter((f) => f.dir === 'in').reduce((a, f) => a + v(f), 0), sent = outs.reduce((a, f) => a + v(f), 0);
+  if (outs.length < 3 || back > 0.1 * sent) return null;
+  const amts = outs.map(v).sort((a, b) => a - b), med = amts[Math.floor(amts.length / 2)];
+  const similar = outs.filter((f) => Math.abs(v(f) - med) <= 0.1 * med);
+  if (similar.length < 3 || med < 100) return null;
+  const gaps = similar.slice(1).map((f, i) => (Date.parse(f.date) - Date.parse(similar[i].date)) / 864e5);
+  const monthly = gaps.filter((g) => g >= 25 && g <= 36).length;
+  return monthly >= Math.max(2, gaps.length * 0.6) ? `~${Math.round(med)} paid about monthly` : null;
+}
+/** Median days until the flow is settled the other way. */
+function turnaround(s: PersonFlow[]): number | null {
+  const days: number[] = [];
+  for (let i = 0; i < s.length; i++) { const j = s.findIndex((f, k) => k > i && f.dir !== s[i].dir); if (j > 0) days.push((Date.parse(s[j].date) - Date.parse(s[i].date)) / 864e5); }
+  if (!days.length) return null; days.sort((a, b) => a - b); return Math.round(days[Math.floor(days.length / 2)]);
+}
+/** Group person-to-person transfers by normalised name. */
 export function groupPeople(flows: PersonFlow[]): PersonSummary[] {
   const by = new Map<string, PersonFlow[]>();
   for (const f of flows) { const k = nameKey(f.counterparty); if (!k) continue; by.set(k, [...(by.get(k) ?? []), f]); }
@@ -103,13 +136,12 @@ export function groupPeople(flows: PersonFlow[]): PersonSummary[] {
     const items = s.map((f) => { const v = f.amountGel ?? f.amount; run = r2(run + (f.dir === 'out' ? v : -v)); return { ...f, running: run }; });
     const sent = r2(s.filter((f) => f.dir === 'out').reduce((a, f) => a + (f.amountGel ?? f.amount), 0));
     const received = r2(s.filter((f) => f.dir === 'in').reduce((a, f) => a + (f.amountGel ?? f.amount), 0));
-    const net = r2(sent - received);
-    let pattern: PersonSummary['pattern'];
-    if (!received) pattern = 'one_way_out'; else if (!sent) pattern = 'one_way_in';
-    else if (Math.abs(net) <= Math.max(1, 0.05 * Math.max(sent, received))) pattern = sent / s.length < 40 && s.length >= 4 ? 'shared' : 'lent_repaid';
-    else pattern = net > 0 ? 'lent_open' : 'borrowed';
+    const rentWhy = detectRent(s) ?? undefined;
+    const months = new Map<string, { month: string; sent: number; received: number }>();
+    for (const f of s) { const m = f.date.slice(0, 7); const x = months.get(m) ?? { month: m, sent: 0, received: 0 }; if (f.dir === 'out') x.sent = r2(x.sent + (f.amountGel ?? f.amount)); else x.received = r2(x.received + (f.amountGel ?? f.amount)); months.set(m, x); }
     const nm = s.map((f) => f.counterparty).sort((a, b) => b.length - a.length)[0];
-    out.push({ key, name: nm, sent, received, net, count: s.length, pattern, items, lastDate: s[s.length - 1].date });
+    out.push({ key, name: nm, sent, received, net: r2(sent - received), count: s.length, pattern: rentWhy ? 'rent' : 'settles', rentWhy, items,
+      lastDate: s[s.length - 1].date, firstDate: s[0].date, turnaroundDays: turnaround(s), monthly: [...months.values()] });
   }
-  return out.sort((a, b) => Math.abs(b.net) - Math.abs(a.net) || b.count - a.count);
+  return out.sort((a, b) => b.sent + b.received - a.sent - a.received || b.count - a.count);
 }
