@@ -53,17 +53,31 @@ export function claimPairing(db: DB, code: string, name: string) {
 
 export function isLoopback(ip: string) { return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'; }
 
-/** Candidate URLs reachable from the phone: Tailscale (100.64.0.0/10) first, then LAN. */
-export function serverUrls(port: number) {
-  const out: { url: string; kind: 'tailscale' | 'lan' }[] = [];
-  for (const [name, addrs] of Object.entries(os.networkInterfaces())) for (const a of addrs ?? []) {
-    if (a.family !== 'IPv4' || a.internal) continue;
-    const [o1, o2] = a.address.split('.').map(Number);
-    const ts = o1 === 100 && o2 >= 64 && o2 <= 127 || /tailscale/i.test(name);
-    out.push({ url: `http://${a.address}:${port}`, kind: ts ? 'tailscale' : 'lan' });
-  }
-  return out.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'tailscale' ? -1 : 1));
+export type UrlKind = 'tailscale' | 'lan' | 'other' | 'virtual';
+const VIRTUAL_NAME = /radmin|hamachi|openvpn|\btap\b|tap-|\btun\b|wintun|virtualbox|vbox|vmware|vethernet|hyper-v|wsl|docker|zerotier|npcap|loopback|bluetooth/i;
+/** Rank one interface address for "can the phone reach me here?". null = never offer it. */
+export function classifyAddress(name: string, address: string): { kind: UrlKind; rank: number } | null {
+  const [o1, o2] = address.split('.').map(Number);
+  if (o1 === 127 || o1 === 0 || (o1 === 169 && o2 === 254)) return null; // loopback / link-local
+  if ((o1 === 100 && o2 >= 64 && o2 <= 127) || /tailscale/i.test(name)) return { kind: 'tailscale', rank: 0 };
+  const priv = o1 === 192 && o2 === 168 || o1 === 10 || (o1 === 172 && o2 >= 16 && o2 <= 31);
+  // Radmin VPN hands out 26.0.0.0/8; Hamachi 25.0.0.0/8 — public-looking but virtual.
+  const virtual = VIRTUAL_NAME.test(name) || o1 === 26 || o1 === 25;
+  if (virtual) return { kind: 'virtual', rank: 3 };
+  if (priv) return { kind: 'lan', rank: /wi-?fi|wlan|wireless/i.test(name) ? 1 : 1.5 };
+  return { kind: 'other', rank: 2 };
 }
+/** Candidate URLs reachable from the phone, best first: Tailscale, Wi-Fi/LAN, other, then virtual adapters (VPNs, VMs). */
+export function rankUrls(ifaces: Record<string, { address: string; family: string | number; internal: boolean }[] | undefined>, port: number) {
+  const out: { url: string; kind: UrlKind; iface: string; rank: number }[] = [];
+  for (const [name, addrs] of Object.entries(ifaces)) for (const a of addrs ?? []) {
+    if ((a.family !== 'IPv4' && a.family !== 4) || a.internal) continue;
+    const c = classifyAddress(name, a.address); if (!c) continue;
+    out.push({ url: `http://${a.address}:${port}`, kind: c.kind, iface: name, rank: c.rank });
+  }
+  return out.sort((x, y) => x.rank - y.rank).map((u) => ({ url: u.url, kind: u.kind, iface: u.iface }));
+}
+export function serverUrls(port: number) { return rankUrls(os.networkInterfaces() as any, port); }
 
 // ---- encrypted backups (AES-256-GCM, scrypt key derivation) ----
 export function encryptBackup(json: string, password: string): string {

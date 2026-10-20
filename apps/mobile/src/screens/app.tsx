@@ -144,16 +144,17 @@ export function SyncScreen({ nav }: ScreenProps) {
   </Screen>;
 }
 export function PairCard({ onPaired }: { onPaired: (c: Conn) => void }) {
-  const [perm, requestPerm] = useCameraPermissions(); const [scan, setScan] = useState(false); const [url, setUrl] = useState('http://100.'); const [code, setCode] = useState(''); const [busy, setBusy] = useState(false);
-  const doPair = async (u: string, k: string) => { setBusy(true); try { onPaired(await pair(u, k, `${Device.manufacturer ?? ''} ${Device.modelName ?? 'Android'}`.trim())); } catch (e: any) { Alert.alert('Pairing failed', e.message + '\n\nBoth devices must be on the same Tailscale network or Wi-Fi and the desktop app must be running.'); } finally { setBusy(false); } };
-  if (scan) return <View style={{ height: 420, borderRadius: 18, overflow: 'hidden' }}><CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => { try { const o = JSON.parse(data); if (o.fa && o.url && o.code) { setScan(false); setUrl(o.url); setCode(o.code); doPair(o.url, o.code); } } catch { /* not ours */ } }} />
+  const [perm, requestPerm] = useCameraPermissions(); const [scan, setScan] = useState(false); const [url, setUrl] = useState(''); const [code, setCode] = useState(''); const [busy, setBusy] = useState(false); const [cands, setCands] = useState<string[]>([]);
+  const doPair = async (u: string | string[], k: string) => { setBusy(true); try { onPaired(await pair(u, k, `${Device.manufacturer ?? ''} ${Device.modelName ?? 'Android'}`.trim())); } catch (e: any) { Alert.alert('Pairing failed', e.message + '\n\nBoth devices must be on the same Wi-Fi (or Tailscale) and the desktop app must be running. You can type the computer\'s Wi-Fi address below (e.g. 192.168.1.10) and tap Pair.'); } finally { setBusy(false); } };
+  if (scan) return <View style={{ height: 420, borderRadius: 18, overflow: 'hidden' }}><CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={({ data }) => { try { const o = JSON.parse(data); if (o.fa && (o.url || o.urls) && o.code) { const list: string[] = [...(o.url ? [o.url] : []), ...(Array.isArray(o.urls) ? o.urls : [])]; setScan(false); setUrl(list[0]); setCands(list); setCode(o.code); doPair(list, o.code); } } catch { /* not ours */ } }} />
     <View style={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}><Btn title="Cancel" kind="danger" onPress={() => setScan(false)} /></View></View>;
   return <Card style={{ gap: 12 }}><T bold style={{ fontSize: 16 }}>Pair with the desktop app (optional)</T>
     <T muted>The app works fully offline. Pair only if you want to sync with your computer: desktop → Settings → Phone & notifications → “Pair Android phone”.</T>
     <Btn icon="📷" title="Scan QR code" loading={busy} onPress={async () => { if (!perm?.granted) { const r = await requestPerm(); if (!r.granted) return; } setScan(true); }} />
-    <Input label="Server URL" value={url} onChangeText={setUrl} autoCapitalize="none" keyboardType="url" />
+    <Input label="Computer address (manual)" value={url} onChangeText={(v) => { setUrl(v); setCands([]); }} autoCapitalize="none" keyboardType="url" placeholder="192.168.1.10 or http://192.168.1.10:5317" />
+    {cands.length > 1 && <T muted style={{ fontSize: 11 }}>From QR, tried in order: {cands.map((u) => u.replace(/^https?:\/\//, '')).join(' → ')}</T>}
     <Input label="Pairing code" value={code} onChangeText={setCode} autoCapitalize="none" />
-    <Btn kind="outline" title="Pair" loading={busy} disabled={!url || code.length < 6} onPress={() => doPair(url, code)} /></Card>;
+    <Btn kind="outline" title="Pair" loading={busy} disabled={!url.trim() || code.length < 6} onPress={() => doPair(cands.length && cands[0] === url ? cands : url, code)} /></Card>;
 }
 
 // ---------- Settings ----------

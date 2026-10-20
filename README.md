@@ -174,3 +174,17 @@ On a credit card or credit line, **Card terms** lets you upload the bank's "key 
 
 - `npm run lint` now covers `apps/mobile` with `react-hooks/rules-of-hooks` as an error. A hook after an early return, or inside a condition or loop, fails lint.
 - `npm run test:mobile` (Node 20) renders every mobile screen twice: once with an empty database and once with sample data, using the real phone engine with native modules stubbed. It fails if a screen throws or React reports a hooks-order error.
+
+## Pairing the phone: which address is used
+
+The pairing QR code lists every address of this computer, best first:
+
+1. Tailscale (100.64.0.0/10)
+2. Wi-Fi / LAN (192.168.x, 10.x, 172.16–31.x)
+3. Other addresses
+4. Virtual adapters: Radmin (26.x), Hamachi (25.x), OpenVPN, VirtualBox/VMware, vEthernet/WSL, Docker
+
+Link-local 169.254.x and loopback addresses are never offered. The phone checks all of them at once (`/api/health`, 3.5 s timeout), pairs over the first one that answers and remembers the whole list, so it can switch automatically if the address changes later. You can also type the address by hand (e.g. `192.168.1.10`). The address list is shown in the pairing dialog on the desktop.
+
+If the phone shows **"No route to host"** while both devices are on the same Wi-Fi, the router is blocking devices from talking to each other (AP / client isolation). Turn that off in the router or use Tailscale. Windows Firewall must also allow the exact `node.exe` the server runs from, e.g.:
+`New-NetFirewallRule -DisplayName "Financial Analytics 5317" -Direction Inbound -Protocol TCP -LocalPort 5317 -Action Allow -Profile Any` (run as administrator).

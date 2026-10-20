@@ -118,9 +118,12 @@ function Phone({ s, onSave }: { s: Record<string, any>; onSave: (p: Record<strin
     </div>
     {pair && <Modal open onClose={() => { setPair(null); devices.refetch(); }} title={t('set.pair')}>
       <div className="space-y-4 text-center">
-        <Field label="Server URL (Tailscale IP of this computer)"><Select value={url} onChange={(e) => setUrl(e.target.value)}>{pair.urls.map((u: any) => <option key={u.url} value={u.url}>{u.url} ({u.kind})</option>)}<option value={url}>{url}</option></Select></Field>
+        <div className="text-left text-xs space-y-1"><div className="font-medium">Addresses the phone will try, in order:</div>
+          <ol className="list-decimal pl-5 space-y-0.5">{[url, ...pair.urls.map((u: any) => u.url).filter((u: string) => u !== url)].map((u: string) => { const m = pair.urls.find((x: any) => x.url === u); return <li key={u}><code className="font-mono">{u}</code> <span className="text-muted-foreground">{m ? `${m.kind} · ${m.iface}` : 'manual'}</span></li>; })}</ol>
+          <p className="text-muted-foreground">The phone remembers the first one that answers. Virtual adapters (VPN/VM) are tried last.</p></div>
+        <Field label="Preferred address (tried first)"><Select value={url} onChange={(e) => setUrl(e.target.value)}>{pair.urls.map((u: any) => <option key={u.url} value={u.url}>{u.url} ({u.kind} · {u.iface})</option>)}{!pair.urls.some((u: any) => u.url === url) && <option value={url}>{url}</option>}</Select></Field>
         <Input value={url} onChange={(e) => setUrl(e.target.value)} />
-        <div className="inline-block rounded-xl bg-white p-4"><QRCodeSVG value={JSON.stringify({ fa: 1, url, code: pair.code })} size={220} /></div>
+        <div className="inline-block rounded-xl bg-white p-4"><QRCodeSVG value={JSON.stringify({ fa: 1, url, urls: [url, ...pair.urls.map((u: any) => u.url).filter((u: string) => u !== url)].slice(0, 8), code: pair.code })} size={240} /></div>
         <p className="text-xs text-muted-foreground">Code (manual entry): <code className="font-mono select-all">{pair.code}</code><br />Expires in 10 minutes · single use</p>
       </div></Modal>}
   </Card>;
