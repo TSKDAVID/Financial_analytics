@@ -187,7 +187,7 @@ export function SettingsScreen({ nav }: ScreenProps) {
 const ITEMS = [
   ['accounts', '🏦', 'Accounts'], ['categories', '🏷', 'Categories'], ['recurring', '🔁', 'Recurring'], ['loans', '💳', 'Loans & cards'],
   ['subscriptions', '🧾', 'Bills & subs'], ['budgets', '🎯', 'Budgets & goals'], ['forecast', '📈', 'Forecast'], ['insights', '💡', 'Insights'],
-  ['risk', '🛡', 'Risk'], ['reports', '📊', 'Reports'], ['import', '📄', 'Import'], ['people', '👥', 'People'], ['sync', '🔄', 'Sync'], ['settings', '⚙️', 'Settings'],
+  ['risk', '🛡', 'Risk'], ['reports', '📊', 'Reports'], ['import', '📄', 'Import'], ['people', '👥', 'People'], ['merchants', '🏪', 'Merchants'], ['sync', '🔄', 'Sync'], ['settings', '⚙️', 'Settings'],
 ] as const;
 export function More({ nav }: { nav: Nav }) {
   const c = useColors();

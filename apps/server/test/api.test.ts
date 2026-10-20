@@ -17,7 +17,7 @@ describe('api', () => {
     for (const k of ['salary', 'freelance', 'business', 'rental', 'gifts', 'loans', 'subscriptions', 'electricity', 'gas', 'water', 'internet', 'phone', 'rent', 'groceries']) expect(cats.some((c: any) => c.key === k)).toBe(true);
   });
   it('creates account and transaction with currency conversion', async () => {
-    const a = (await inject('POST', '/api/accounts', { name: 'Card', type: 'card' })).json();
+    const a = (await inject('POST', '/api/accounts', { name: 'Card', type: 'card', opening_date: '2025-12-31' })).json();
     const t = await inject('POST', '/api/transactions', { kind: 'expense', amount: 10, currency: 'USD', date: '2026-01-01', account_id: a.id, tags: ['x'] });
     expect(t.statusCode).toBe(200);
     expect(t.json().amount_gel).toBe(27);

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowLeftRight, Check, X, Users, Repeat, PiggyBank } from 'lucide-react';
 import { useT } from '../lib/i18n';
 import { useApi, useAction } from '../lib/hooks';
@@ -64,14 +65,17 @@ export function PeopleList() {
   const t = useT();
   const p = useApi<any>('/people');
   const { run, busy } = useAction();
+  const [sort, setSort] = useState<'sent' | 'received' | 'total' | 'net'>('sent');
   if (!p.data) return <Spinner />;
   const d = p.data;
+  const ranked = [...d.people].filter((x: any) => !x.hidden).sort((a: any, b: any) => sort === 'net' ? Math.abs(b.net) - Math.abs(a.net) : (b[sort] ?? b.sent + b.received) - (a[sort] ?? a.sent + a.received));
   if (!d.people.length) return <Card><p className="text-sm text-muted-foreground">{t('ppl.empty')}</p></Card>;
   return <div className="space-y-4">
     <div className="grid grid-cols-2 gap-3"><Stat label={t('ppl.owedToYou')} value={money(d.owedToYou)} /><Stat label={t('ppl.youOwe')} value={money(d.youOwe)} /></div>
-    <Card className="p-0"><ul className="divide-y text-sm">{d.people.filter((x: any) => !x.hidden).map((x: any) => <li key={x.key} className="p-3">
+    <div className="flex items-center gap-2 text-sm"><span className="text-muted-foreground">{t('ppl.sort')}</span>{(['sent', 'received', 'total', 'net'] as const).map((k) => <Button key={k} size="sm" variant={sort === k ? 'primary' : 'outline'} onClick={() => setSort(k)}>{t('ppl.sort.' + k)}</Button>)}</div>
+    <Card className="p-0"><ul className="divide-y text-sm">{ranked.map((x: any, idx: number) => <li key={x.key} className="p-3">
       <details><summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
-        <span><b className="capitalize">{x.name}</b> <span className="text-xs text-muted-foreground">×{x.count} · {dateFmt(x.lastDate)}</span></span>
+        <span><span className="mr-1 text-xs text-muted-foreground">#{idx + 1}</span><b className="capitalize">{x.name}</b> <span className="text-xs text-muted-foreground">×{x.count} · {dateFmt(x.lastDate)} · {t('ppl.sent')} {money(x.sent)} · {t('ppl.received')} {money(x.received)}</span></span>
         <span className="flex items-center gap-2">
           <select aria-label="pattern" className="h-7 rounded-md border bg-background px-1 text-xs" value={x.pattern} disabled={busy} onClick={(e) => e.stopPropagation()}
             onChange={(e) => run(() => put(`/people/${encodeURIComponent(x.key)}`, { pattern: e.target.value }))}>

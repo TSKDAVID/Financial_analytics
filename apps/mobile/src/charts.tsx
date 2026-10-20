@@ -7,11 +7,11 @@ import { money } from './lapi';
 const useWidth = () => { const [w, setW] = useState(0); return [w, (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width)] as const; };
 
 /** Grouped bars (e.g. income vs expense per month). */
-export function Bars({ data, keys, colors, height = 160, label }: { data: any[]; keys: string[]; colors: string[]; height?: number; label: (d: any) => string }) {
+export function Bars({ data, keys, colors, height = 160, label, onPick }: { data: any[]; keys: string[]; colors: string[]; height?: number; label: (d: any) => string; onPick?: (d: any) => void }) {
   const c = useColors(); const [w, onLayout] = useWidth();
   const max = Math.max(1, ...data.flatMap((d) => keys.map((k) => Math.abs(d[k] ?? 0))));
   const gw = w / Math.max(1, data.length); const bw = Math.max(2, (gw * 0.7) / keys.length);
-  return <View onLayout={onLayout}>{w > 0 && <Svg width={w} height={height}>
+  return <View onLayout={onLayout} onStartShouldSetResponder={() => !!onPick} onResponderRelease={(e) => { if (onPick && gw > 0) { const i = Math.floor(e.nativeEvent.locationX / gw); if (data[i]) onPick(data[i]); } }}>{w > 0 && <Svg width={w} height={height}>
     <SLine x1={0} x2={w} y1={height - 1} y2={height - 1} stroke={c.border} />
     {data.map((d, i) => keys.map((k, j) => { const h = (Math.abs(d[k] ?? 0) / max) * (height - 8); return <Rect key={`${i}${k}`} x={i * gw + gw * 0.15 + j * bw} y={height - 1 - h} width={bw - 1} height={h} rx={2} fill={colors[j]} />; }))}
   </Svg>}

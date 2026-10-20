@@ -4,16 +4,17 @@
  * bank operation type) → scored keyword rules (whole-word, Georgian-aware, with negative keywords)
  * → MCC code → the bank's own merchant category → fallback. Every result carries a confidence and a "why".
  */
-import { tokens, phrase, matchPhrase, normText, sameName, isPersonName, type Phrase } from './textnorm';
+import { tokens, phrase, matchPhrase, normText, sameName, isPersonName, isBarePersonName, type Phrase } from './textnorm';
 
 export const TX_KINDS = ['purchase', 'subscription', 'bill', 'topup', 'cash_withdrawal', 'cash_deposit', 'transfer_out', 'transfer_in', 'internal', 'exchange',
   'salary', 'income', 'loan_repayment', 'loan_disbursement', 'fee', 'interest', 'refund'] as const;
 export type TxKind = (typeof TX_KINDS)[number];
 /** Kinds that are not income or spending: moving your own money around. Posted as transfers, excluded from analytics. */
-export const NON_PL_KINDS: TxKind[] = ['internal', 'exchange', 'loan_disbursement', 'cash_deposit'];
+// cash deposits count as income: cash withdrawals count as spending, so cash you bring to the bank is money in
+export const NON_PL_KINDS: TxKind[] = ['internal', 'exchange', 'loan_disbursement'];
 export const isNonPL = (k: string) => (NON_PL_KINDS as string[]).includes(k);
 /** Kinds whose category is implied by the kind itself. */
-const KIND_CATEGORY: Partial<Record<TxKind, string>> = { salary: 'salary', interest: 'interest_income', refund: 'refunds', cash_withdrawal: 'cash', fee: 'fees', loan_repayment: 'loans' };
+const KIND_CATEGORY: Partial<Record<TxKind, string>> = { salary: 'salary', interest: 'interest_income', refund: 'refunds', cash_withdrawal: 'cash', cash_deposit: 'other_income', fee: 'fees', loan_repayment: 'loans' };
 const OUT_KINDS: TxKind[] = ['purchase', 'subscription', 'bill', 'topup', 'cash_withdrawal', 'transfer_out', 'loan_repayment', 'fee'];
 const IN_KINDS: TxKind[] = ['cash_deposit', 'transfer_in', 'salary', 'income', 'loan_disbursement', 'interest', 'refund'];
 export const kindDirection = (k: TxKind): 'in' | 'out' | 'both' => (OUT_KINDS.includes(k) ? 'out' : IN_KINDS.includes(k) ? 'in' : 'both');
@@ -122,8 +123,19 @@ const BANK_CATS: [Phrase, string][] = ([['სასურსათო მაღ�
 
 const GENERIC = new Set(['ltd', 'llc', 'shps', 'ss', 'sps', 'georgia', 'tbilisi', 'tbilisis', 'tb', 'ge', 'eu', 'o', 'com', 'gel', 'usd', 'eur', 'pos', 'payment', 'tbc', 'the', 'i', 'm', 'sakartvelo', 'grup', 'group']);
 /** Display name for the merchant / counterparty. */
+/** Payment-facilitator prefixes printed before the real merchant ("FLT*Jetshr", "KEEPZ.ME LLC*ScooterRe", "TpayLLC*kfc"). */
+const FACILITATOR = /^(?:FLT|TPAY\s*LLC|TPAYLLC|VIP\s*PAY|KEEPZ\.?ME(?:\s+LLC)?|LTD\s+KEEPZ\.?ME|SQ|PAYPAL|PP|GOOGLE|APPLE\.COM|BOLT\.EU|UBR|PAYZE|PAYBOX|IPAY)\s*\*\s*/i;
+/** Clean merchant name for grouping and display: no facilitator prefix, legal form, POS/MCC/card/date noise. */
+export function normalizeMerchantName(raw: string): string {
+  let m = raw.trim().replace(/^(POS wallet|POS|ობიექტი:)\s*-?\s*/i, '');
+  const fac = m.match(FACILITATOR); if (fac && m.length > fac[0].length + 1) m = m.slice(fac[0].length);
+  m = m.replace(/,?\s*MCC:?\s*\d{4}.*$/i, '').replace(/\d{6}\*+\d{4}/g, '').replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}.*$/i, '')
+    .replace(/\b(LTD|LLC|L\.L\.C\.|JSC|INC|GMBH)\b\.?/gi, '').replace(/^(შპს|სს|სსიპ|ი\/მ)\s+/, '').replace(/["„“”]/g, '').replace(/[\s,.;*-]+$/, '').replace(/\s{2,}/g, ' ').trim();
+  // "Jetshr" / "ScooterRe": keep it short and readable
+  return m ? (/^[a-z]/.test(m) ? m.charAt(0).toUpperCase() + m.slice(1) : m) : raw.trim();
+}
 export function merchantDisplay(i: Pick<ClassifyInput, 'merchant' | 'counterparty' | 'description' | 'provider'>): string {
-  const m = i.merchant?.trim();
+  const m0 = i.merchant?.trim(); const m = m0 ? normalizeMerchantName(m0) : m0;
   if (m) return m.replace(/\*.*$/, (x) => (x.length > 3 && /^\*[A-Z0-9]{6,}/.test(x) ? '' : x)).replace(/[/]O[/]\d+/i, '').replace(/\b(LTD|LLC|L\.L\.C\.)\b\.?/gi, '').replace(/[\s,]+$/, '').replace(/^["'„]+|["'“]+$/g, '').trim() || m;
   if (i.counterparty) return i.counterparty.trim();
   return i.description.replace(/\s{2,}/g, ' ').slice(0, 60);
@@ -136,7 +148,9 @@ export function merchantKeyOf(name: string): string {
 export function classify(input: ClassifyInput, ctx: ClassifyContext = {}): Classification {
   const dir = input.direction === 'income' ? 'in' : 'out';
   const name = merchantDisplay(input);
-  const isPerson = !input.merchant && isPersonName(input.counterparty);
+  // a bare "Surname Name" (Georgian or Latin) with no card/MCC data is a person transfer too ("უბილავა ლულა")
+  const bareName = !input.counterparty && !input.mcc ? [input.merchant, input.description].find((x) => isBarePersonName(x)) : undefined;
+  const isPerson = (!input.merchant && isPersonName(input.counterparty)) || !!bareName;
   const own = !!(input.counterparty && ctx.ownerNames?.some((n) => sameName(n, input.counterparty))) || !!(input.counterpartyAccount && ctx.ownAccounts?.has(input.counterpartyAccount));
   // key: merchant for card payments, person/company name for transfers, else the operation wording
   const mkey = merchantKeyOf(input.merchant ? name : input.counterparty ?? input.opType ?? name) || merchantKeyOf(input.description);
@@ -165,6 +179,7 @@ export function classify(input: ClassifyInput, ctx: ClassifyContext = {}): Class
   if (!kind && mccInfo?.kind && mccInfo.kind !== 'subscription' && kindDirection(mccInfo.kind) === dir) { kind = mccInfo.kind; kconf = 0.85; kwhy = `MCC ${input.mcc}`; ksrc = 'mcc'; }
   if (!kind && /სერვისი/.test(input.opType ?? '')) { kind = 'bill'; kconf = 0.8; kwhy = 'pay-service bill'; ksrc = 'structural'; }
   if (!kind && input.counterparty && !input.merchant) { kind = dir === 'out' ? 'transfer_out' : 'transfer_in'; kconf = isPerson ? 0.85 : 0.6; kwhy = isPerson ? 'transfer to/from a person' : 'transfer'; ksrc = 'structural'; }
+  if (!kind && bareName) { kind = dir === 'out' ? 'transfer_out' : 'transfer_in'; kconf = 0.8; kwhy = 'bare person name'; ksrc = 'structural'; }
   if (!kind && input.merchant) { kind = dir === 'out' ? 'purchase' : 'refund'; kconf = dir === 'out' ? 0.85 : 0.6; kwhy = dir === 'out' ? 'card payment at a merchant' : 'credit from a merchant'; ksrc = 'structural'; }
   if (!kind) { kind = dir === 'out' ? 'purchase' : 'income'; kconf = 0.35; kwhy = 'no signal'; ksrc = 'fallback'; }
   if (isNonPL(kind)) return done(kind, null, kconf, ksrc, kwhy);

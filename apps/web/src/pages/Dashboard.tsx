@@ -13,6 +13,8 @@ import { Button, Card, Input, PageHeader, Spinner, Stat, Tabs, Badge, cn, Empty 
 import { NoData } from '../components/NoData';
 import { InsightList, makePeriod, shiftPeriod, type Period, type PeriodKind, axis, grid, tooltipStyle, type Insight } from '../components/shared';
 import { openNewTx } from '../components/Layout';
+import { MonthPanel } from '../components/MonthPanel';
+import { AnalyticsFixNotice } from '../components/AnalyticsFixNotice';
 
 export default function Dashboard() {
   const t = useT();
@@ -24,6 +26,7 @@ export default function Dashboard() {
   const risk = useApi<any>('/risk');
   const { run, busy } = useAction();
   const fcData = useFcPost();
+  const [month, setMonth] = useState<string | null>(null);
 
   if (meta.data && !meta.data.hasData) return (
     <div className="max-w-xl mx-auto mt-16"><Card><Empty icon={<Sparkles className="h-6 w-6" />} title={t('dash.welcome')}>
@@ -45,6 +48,7 @@ export default function Dashboard() {
             : <div className="flex gap-1"><Input type="date" className="w-36 h-9" value={p.from} onChange={(e) => setP({ ...p, from: e.target.value })} /><Input type="date" className="w-36 h-9" value={p.to} onChange={(e) => setP({ ...p, to: e.target.value })} /></div>}
         </div>} />
       <BillCleanupNotice />
+      <AnalyticsFixNotice />
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <Stat label={t('dash.netCashFlow')} value={money(x.net)} delta={x.compare.prev.netPct} deltaLabel={t('dash.vsLast')} icon={<Scale className="h-4 w-4" />} tone="#6366f1" />
@@ -93,14 +97,15 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title={t('dash.trends')} subtitle="12 months">
-          <div className="h-64"><ResponsiveContainer><ComposedChart data={x.trend}>
+        <Card className="lg:col-span-2" title={t('dash.trends')} subtitle={t('month.hint')}>
+          <div className="h-64 cursor-pointer"><ResponsiveContainer><ComposedChart data={x.trend} onClick={(e: any) => e?.activeLabel && setMonth(String(e.activeLabel))}>
             <CartesianGrid {...grid} /><XAxis dataKey="month" {...axis} tickFormatter={(v) => monthFmt(v)} /><YAxis {...axis} tickFormatter={(v) => money(v, 'GEL', { compact: true })} width={60} />
             <Tooltip {...tooltipStyle} formatter={(v: number) => money(v)} labelFormatter={(l) => monthFmt(l, false)} /><Legend />
-            <Bar dataKey="net" name={t('dash.netCashFlow')} radius={[4, 4, 0, 0]}>{x.trend.map((m: any) => <Cell key={m.month} fill={m.net >= 0 ? '#6366f1' : '#ef4444'} fillOpacity={0.75} />)}</Bar>
+            <Bar dataKey="net" name={t('dash.netCashFlow')} radius={[4, 4, 0, 0]} onClick={(m: any) => m?.month && setMonth(m.month)}>{x.trend.map((m: any) => <Cell key={m.month} fill={m.net >= 0 ? '#6366f1' : '#ef4444'} fillOpacity={0.75} />)}</Bar>
             <Line type="monotone" dataKey="income" name={t('common.income')} stroke="#10b981" strokeWidth={2} dot={false} />
             <Line type="monotone" dataKey="expense" name={t('common.expense')} stroke="#f97316" strokeWidth={2} dot={false} />
           </ComposedChart></ResponsiveContainer></div>
+          <MonthPanel month={month} onClose={() => setMonth(null)} />
         </Card>
         <Card title={<span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />{t('dash.insights')}</span>} action={<Link to="/forecast" className="text-xs text-primary">→</Link>}>
           {x.dataStatus && !x.dataStatus.sufficient ? <NoData compact what={t('nodata.insights')} /> : <InsightList items={ins.data ?? []} max={6} />}

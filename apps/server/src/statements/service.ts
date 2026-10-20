@@ -1,5 +1,5 @@
 import { classify, isNonPL, kindDirection, detectRecurring, addDays, matchTransfers, ibanBank, destinationBank, groupPeople, type TxKind, type Leg, type MatchOpts } from '@fa/core';
-import { getSetting } from '../schema';
+import { getSetting, setSetting } from '../schema';
 import type { DB } from '../schema';
 import { insertTransaction } from '../services';
 import { latestRates } from '../rates';
@@ -37,7 +37,7 @@ export function migrateImports(db: DB) {
   for (const [c, d] of [['tx_kind', 'TEXT'], ['why', 'TEXT'], ['mcc', 'TEXT'], ['op_type', 'TEXT'], ['card', 'TEXT'], ['counterparty', 'TEXT'], ['counterparty_account', 'TEXT'],
     ['merchant_key', "TEXT NOT NULL DEFAULT ''"], ['time', 'TEXT'], ['own', 'INTEGER NOT NULL DEFAULT 0'], ['person', 'INTEGER NOT NULL DEFAULT 0']]) add('import_rows', c, d);
   for (const [c, d] of [['holder', 'TEXT'], ['account_iban', 'TEXT'], ['format', 'TEXT'], ['verification', 'TEXT']]) add('import_batches', c, d);
-  for (const [c, d] of [['tx_kind', 'TEXT'], ['counterparty', 'TEXT']]) add('transactions', c, d);
+  for (const [c, d] of [['tx_kind', 'TEXT'], ['counterparty', 'TEXT'], ['moved_from', 'TEXT']]) add('transactions', c, d);
   db.exec('CREATE INDEX IF NOT EXISTS import_rows_mkey ON import_rows(merchant_key)');
 }
 
@@ -106,6 +106,101 @@ export async function importPdf(db: DB, filename: string, data: Uint8Array, acco
   return id;
 }
 
+
+// ---------------- turning posted income/expense into "moving your own money" (reversible) ----------------
+/** Re-post an existing transaction as a transfer, remembering the original so it can be restored. */
+function asTransfer(db: DB, txId: number, reason: string) {
+  const t = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txId) as any;
+  if (!t || t.kind === 'transfer') return false;
+  const orig = JSON.stringify({ kind: t.kind, account_id: t.account_id, to_account_id: t.to_account_id, category_id: t.category_id, reason });
+  // money in keeps landing on its account: a transfer INTO that account
+  const [from, to] = t.kind === 'income' ? [null, t.account_id] : [t.account_id, null];
+  db.prepare("UPDATE transactions SET kind = 'transfer', account_id = ?, to_account_id = ?, category_id = NULL, moved_from = ? WHERE id = ?").run(from, to, orig, txId);
+  return true;
+}
+function restoreTx(db: DB, txId: number, reason?: string) {
+  const t = db.prepare('SELECT moved_from FROM transactions WHERE id = ?').get(txId) as any;
+  if (!t?.moved_from) return false;
+  const o = JSON.parse(t.moved_from); if (reason && o.reason !== reason) return false;
+  db.prepare('UPDATE transactions SET kind = ?, account_id = ?, to_account_id = ?, category_id = ?, moved_from = NULL WHERE id = ?').run(o.kind, o.account_id, o.to_account_id, o.category_id, txId);
+  return true;
+}
+const legTx = (db: DB, rowId: number | null, txId: number | null) => txId ?? (rowId ? (db.prepare('SELECT transaction_id FROM import_rows WHERE id = ?').pluck().get(rowId) as number | null) : null);
+/** A confirmed pair whose legs are both already real transactions: post both as transfers + the fee. */
+async function applyPostedMatch(db: DB, m: any) {
+  const o = legTx(db, m.out_row_id, m.out_tx_id), i = legTx(db, m.in_row_id, m.in_tx_id);
+  if (!o || !i || o === i) return false;
+  const a = asTransfer(db, o, `match:${m.id}`), b = asTransfer(db, i, `match:${m.id}`);
+  if ((a || b) && m.fee > 0.004 && !m.fee_tx_id) {
+    const t = db.prepare('SELECT * FROM transactions WHERE id = ?').get(o) as any;
+    const fees = db.prepare("SELECT id FROM categories WHERE key = 'fees'").pluck().get() as number | undefined;
+    const feeId = await insertTransaction(db, { kind: 'expense', amount: m.fee, currency: m.fee_currency ?? t.currency, date: t.date, account_id: JSON.parse(t.moved_from ?? '{}').account_id ?? t.account_id, category_id: fees ?? null, description: 'Transfer fee', tags: ['import', 'transfer-fee'] });
+    db.prepare("UPDATE transactions SET import_batch_id = ?, tx_kind = 'fee' WHERE id = ?").run(t.import_batch_id, feeId);
+    db.prepare('UPDATE import_matches SET fee_tx_id = ? WHERE id = ?').run(feeId, m.id);
+  }
+  return a || b;
+}
+function unapplyPostedMatch(db: DB, m: any) {
+  for (const id of [legTx(db, m.out_row_id, m.out_tx_id), legTx(db, m.in_row_id, m.in_tx_id)]) if (id) restoreTx(db, id, `match:${m.id}`);
+  if (m.fee_tx_id) { db.prepare('DELETE FROM transactions WHERE id = ?').run(m.fee_tx_id); db.prepare('UPDATE import_matches SET fee_tx_id = NULL WHERE id = ?').run(m.id); }
+}
+
+/**
+ * Money that went to a friend and came back (or that you borrowed and repaid) is not income or spending.
+ * Posted person-to-person transfers of two-way relationships are re-posted as transfers; one-way flows
+ * (gifts, paying someone for something) and split costs stay as spending/income. Fully reversible.
+ */
+export function refreshPeopleNetting(db: DB) {
+  const rows = db.prepare("SELECT id, date, amount_gel, currency, kind, counterparty, moved_from FROM transactions WHERE tx_kind IN ('transfer_out','transfer_in') AND counterparty IS NOT NULL AND (kind != 'transfer' OR moved_from LIKE '%\"reason\":\"people\"%')").all() as any[];
+  const dirOf = (r: any) => (r.moved_from ? JSON.parse(r.moved_from).kind : r.kind) === 'income' ? 'in' : 'out';
+  const groups = groupPeople(rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount_gel, amountGel: r.amount_gel, currency: 'GEL', dir: dirOf(r), counterparty: r.counterparty })));
+  const ov = new Map((db.prepare('SELECT person_key, pattern FROM people_overrides').all() as any[]).map((o) => [o.person_key, o.pattern]));
+  let moved = 0, restored = 0;
+  db.transaction(() => {
+    for (const g of groups) {
+      const pattern = ov.get(g.key) ?? g.pattern;
+      const two = pattern === 'lent_repaid' || pattern === 'lent_open' || pattern === 'borrowed';
+      // only the part that came back is netted out: the smaller side fully, the larger side up to that amount
+      const outs = g.items.filter((i) => i.dir === 'out'), ins = g.items.filter((i) => i.dir === 'in');
+      const cap = two ? Math.min(g.sent, g.received) : 0;
+      // pick legs on both sides until the two picked sums agree; netting unequal sums would distort the P&L
+      const v = (it: { amount: number; amountGel?: number }) => it.amountGel ?? it.amount;
+      const pick = (side: typeof outs, lim: number) => { const k: typeof outs = []; let acc = 0; for (const it of side) if (acc + v(it) <= lim + 0.01) { k.push(it); acc += v(it); } return { k, acc }; };
+      let po = pick(outs, cap), pi = pick(ins, cap);
+      for (let n = 0; n < 6 && Math.abs(po.acc - pi.acc) > 0.01; n++) { const lim = Math.min(po.acc, pi.acc); po = pick(outs, lim); pi = pick(ins, lim); }
+      const ok = po.acc > 0 && Math.abs(po.acc - pi.acc) <= Math.max(1, 0.02 * po.acc);
+      const keep = new Set<number>(ok ? [...po.k, ...pi.k].map((i) => Number(i.ref)) : []);
+      for (const it of g.items) { const id = Number(it.ref); if (keep.has(id)) { if (asTransfer(db, id, 'people')) moved++; } else if (restoreTx(db, id, 'people')) restored++; }
+    }
+  })();
+  return { moved, restored };
+}
+
+/** v1.5 data fix: pairs between your banks that were approved as income + expense, and friends' loans counted as spending. */
+export function migrateAnalyticsFix(db: DB) {
+  if (getSetting(db, 'analyticsV15')) return;
+  const before = periodTotals(db);
+  let pairs = 0;
+  for (const m of db.prepare("SELECT * FROM import_matches WHERE status = 'proposed' AND score >= ? ORDER BY score DESC").all(AUTO_CONFIRM) as any[]) {
+    const o = legTx(db, m.out_row_id, m.out_tx_id), i = legTx(db, m.in_row_id, m.in_tx_id);
+    if (!o || !i) continue;
+    db.prepare("UPDATE import_matches SET status = 'confirmed' WHERE id = ?").run(m.id);
+    applyPostedMatch(db, m).catch(() => undefined); pairs++;
+  }
+  // cash deposits were posted as transfers: money in, so income ("Other income")
+  const oi = db.prepare("SELECT id FROM categories WHERE key = 'other_income'").pluck().get() as number | undefined;
+  const cash = db.prepare("UPDATE transactions SET kind = 'income', category_id = ?, account_id = COALESCE(to_account_id, account_id), to_account_id = NULL WHERE kind = 'transfer' AND tx_kind = 'cash_deposit' AND moved_from IS NULL").run(oi ?? null).changes;
+  db.prepare("UPDATE import_rows SET category_id = ? WHERE tx_kind = 'cash_deposit' AND category_id IS NULL").run(oi ?? null);
+  // other incoming own-money moves were posted as leaving the account
+  db.exec("UPDATE transactions SET to_account_id = account_id, account_id = NULL WHERE kind = 'transfer' AND to_account_id IS NULL AND account_id IS NOT NULL AND moved_from IS NULL AND id IN (SELECT transaction_id FROM import_rows WHERE kind = 'income' AND transaction_id IS NOT NULL)");
+  const ppl = refreshPeopleNetting(db);
+  setSetting(db, 'analyticsV15', '1');
+  setSetting(db, 'analyticsFix', JSON.stringify({ at: new Date().toISOString(), transferPairs: pairs, peopleMoved: ppl.moved, cashDeposits: cash, before, after: periodTotals(db), seen: pairs + ppl.moved === 0 }));
+}
+const periodTotals = (db: DB) => db.prepare("SELECT ROUND(SUM(CASE WHEN kind='income' THEN amount_gel ELSE 0 END), 2) AS income, ROUND(SUM(CASE WHEN kind='expense' THEN amount_gel ELSE 0 END), 2) AS expense FROM transactions").get();
+/** Suggested transfer pairs at or above this score are confirmed when you approve the import (you can still undo per pair). */
+export const AUTO_CONFIRM = 0.9;
+
 // ---------------- cross-statement transfer matching ----------------
 const legOfRow = (r: any, bankOf: Map<number, string | null>): Leg => ({
   ref: `r${r.id}`, account: `b${r.batch_id}:${r.account_iban ?? r.account_id ?? r.batch_id}:${r.currency}`, bank: bankOf.get(r.batch_id) ?? null,
@@ -144,12 +239,16 @@ export function rematch(db: DB, opts: MatchOpts = {}) {
   return found.length;
 }
 /** Confirm or reject a proposed pair. Confirming only changes how rows will be posted on approval. */
-export function decideMatch(db: DB, matchId: number, status: 'confirmed' | 'rejected' | 'proposed') {
+export async function decideMatch(db: DB, matchId: number, status: 'confirmed' | 'rejected' | 'proposed') {
   const m = db.prepare('SELECT * FROM import_matches WHERE id = ?').get(matchId) as any;
   if (!m) throw Object.assign(new Error('Match not found'), { statusCode: 404 });
   const posted = [m.out_row_id, m.in_row_id].filter(Boolean).some((r) => (db.prepare('SELECT transaction_id FROM import_rows WHERE id = ?').get(r) as any)?.transaction_id);
-  if (posted && m.status === 'confirmed' && status !== 'confirmed') throw Object.assign(new Error('Revert the approved import first'), { statusCode: 400 });
   db.prepare('UPDATE import_matches SET status = ? WHERE id = ?').run(status, matchId);
+  if (posted) {
+    // already-approved legs: re-post them right away (and undo it again when the pair is rejected)
+    if (status === 'confirmed' && m.status !== 'confirmed') await applyPostedMatch(db, m);
+    if (status !== 'confirmed' && m.status === 'confirmed') unapplyPostedMatch(db, m);
+  }
   return db.prepare('SELECT * FROM import_matches WHERE id = ?').get(matchId);
 }
 
@@ -231,6 +330,8 @@ export async function approve(db: DB, batchId: number, rowIds?: number[]) {
   if (b.status === 'discarded') throw Object.assign(new Error('This import was discarded'), { statusCode: 400 });
   let rows = db.prepare('SELECT * FROM import_rows WHERE batch_id = ? AND excluded = 0 AND transaction_id IS NULL ORDER BY idx').all(batchId) as any[];
   if (rowIds?.length) { const set = new Set(rowIds); rows = rows.filter((r) => set.has(r.id)); }
+  // approving an import also confirms its strong transfer suggestions (≥ AUTO_CONFIRM); weaker ones stay suggestions
+  db.prepare(`UPDATE import_matches SET status = 'confirmed' WHERE status = 'proposed' AND score >= ? AND (out_row_id IN (SELECT id FROM import_rows WHERE batch_id = ?) OR in_row_id IN (SELECT id FROM import_rows WHERE batch_id = ?))`).run(AUTO_CONFIRM, batchId, batchId);
   let n = 0; const touched = new Set<number>([batchId]);
   const link = db.prepare('UPDATE import_rows SET transaction_id = ? WHERE id = ?');
   const stamp = (txId: number, r: any) => db.prepare('UPDATE transactions SET import_batch_id = ?, tx_kind = ?, counterparty = ? WHERE id = ?').run(batchId, r.tx_kind ?? null, r.counterparty ?? null, txId);
@@ -267,11 +368,13 @@ export async function approve(db: DB, batchId: number, rowIds?: number[]) {
       n++; continue;
     }
     const kind = isNonPL(r.tx_kind ?? '') ? 'transfer' : r.kind;
-    const txId = await insertTransaction(db, { kind, amount: r.amount, currency: r.currency, date: r.date, account_id: acct, category_id: kind === 'transfer' ? null : r.category_id, description: r.description, tags: ['import', `batch-${batchId}`] });
+    const inbound = kind === 'transfer' && r.kind === 'income'; // money arriving on this account
+    const txId = await insertTransaction(db, { kind, amount: r.amount, currency: r.currency, date: r.date, account_id: inbound ? null : acct, to_account_id: inbound ? acct : null, category_id: kind === 'transfer' ? null : r.category_id, description: r.description, tags: ['import', `batch-${batchId}`] });
     stamp(txId, r); link.run(txId, r.id);
     n++;
   }
   for (const id of touched) refreshStatus(db, id);
+  refreshPeopleNetting(db);
   return { approved: n, status: refreshStatus(db, batchId) };
 }
 
@@ -286,6 +389,11 @@ export function revert(db: DB, batchId: number) {
       db.prepare('UPDATE import_rows SET transaction_id = NULL WHERE batch_id = ? AND transaction_id = ?').run(batchId, p.tx);
     }
     const ids = db.prepare('SELECT id FROM transactions WHERE import_batch_id = ?').pluck().all(batchId) as number[];
+    // pairs re-posted after approval: undo them on the partner side, which may belong to another import
+    for (const m of db.prepare("SELECT * FROM import_matches WHERE status = 'confirmed'").all() as any[]) {
+      const legs = [legTx(db, m.out_row_id, m.out_tx_id), legTx(db, m.in_row_id, m.in_tx_id)];
+      if (legs.some((x) => x && ids.includes(x))) { for (const x of legs) if (x && !ids.includes(x)) restoreTx(db, x, `match:${m.id}`); }
+    }
     const removed = db.prepare('DELETE FROM transactions WHERE import_batch_id = ?').run(batchId).changes;
     for (const id of ids) {
       for (const o of db.prepare('SELECT DISTINCT batch_id FROM import_rows WHERE transaction_id = ? AND batch_id != ?').pluck().all(id, batchId) as number[]) affected.add(o);
@@ -297,6 +405,7 @@ export function revert(db: DB, batchId: number) {
     return removed;
   })();
   for (const id of affected) refreshStatus(db, id);
+  refreshPeopleNetting(db);
   return { removed: r };
 }
 export function discard(db: DB, batchId: number) {
@@ -359,7 +468,7 @@ export function analyze(db: DB, batchId: number) {
 /** P2P flows grouped by person (normalised / transliterated name). */
 export function peopleFrom(rows: any[]) {
   const rates = new Map<string, number>();
-  const flows = rows.filter((r) => r.counterparty && r.person && !r.own && (r.tx_kind === 'transfer_out' || r.tx_kind === 'transfer_in'))
+  const flows = rows.map((r) => ({ ...r, counterparty: r.counterparty || (r.person ? (r.merchant || r.description || '').trim() : '') })).filter((r) => r.counterparty && r.person && !r.own && (r.tx_kind === 'transfer_out' || r.tx_kind === 'transfer_in'))
     .map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, currency: r.currency, dir: (r.kind === 'income' ? 'in' : 'out') as 'in' | 'out', counterparty: r.counterparty, amountGel: r.gel ?? r.amount * (rates.get(r.currency) ?? 1) }));
   return groupPeople(flows);
 }
@@ -369,7 +478,7 @@ export function people(db: DB) {
   const rows = (db.prepare("SELECT r.* FROM import_rows r JOIN import_batches b ON b.id = r.batch_id WHERE b.status != 'discarded' AND r.excluded = 0 AND r.duplicate_of IS NULL").all() as any[])
     .map((r) => ({ ...r, gel: r.amount * (rates[r.currency] ?? 1) }));
   const ov = new Map((db.prepare('SELECT * FROM people_overrides').all() as any[]).map((o) => [o.person_key, o]));
-  const list = peopleFrom(rows).map((p) => ({ ...p, pattern: (ov.get(p.key)?.pattern ?? p.pattern) as typeof p.pattern, overridden: !!ov.get(p.key)?.pattern, hidden: !!ov.get(p.key)?.hidden }));
+  const list = peopleFrom(rows).map((p) => ({ ...p, pattern: (ov.get(p.key)?.pattern ?? p.pattern) as typeof p.pattern, overridden: !!ov.get(p.key)?.pattern, hidden: !!ov.get(p.key)?.hidden, total: Math.round((p.sent + p.received) * 100) / 100 })).sort((a, b) => b.sent - a.sent);
   const owedToYou = Math.round(list.filter((p) => p.net > 0 && p.pattern !== 'one_way_out' && p.pattern !== 'shared').reduce((a, p) => a + p.net, 0) * 100) / 100;
   const youOwe = Math.round(list.filter((p) => p.net < 0 && p.pattern !== 'one_way_in' && p.pattern !== 'shared').reduce((a, p) => a - p.net, 0) * 100) / 100;
   return { people: list, owedToYou, youOwe };

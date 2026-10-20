@@ -1,5 +1,5 @@
 // Pure schema + settings helpers, shared by the Node server and the offline Android app (no Node imports here).
-import { migrateImports } from './statements/service';
+import { migrateImports, migrateAnalyticsFix } from './statements/service';
 import { migrateCredit } from './credit/service';
 import { migrateSync } from './sync/track';
 import { migrateTerms } from './terms/service';
@@ -111,11 +111,13 @@ export function initDb(db: DB) {
   db.exec(SCHEMA);
   seedBuiltins(db);
   migrateImports(db);
+  migrateAccountOpening(db);
   migrateCredit(db);
   migrateLoans(db);
   migrateBillTracking(db);
   migrateTerms(db);
   migrateSync(db);
+  migrateAnalyticsFix(db);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
   if (!getSetting(db, 'minBalanceMigrated')) { if (getSetting(db, 'minBalance') === '300') setSetting(db, 'minBalance', ''); setSetting(db, 'minBalanceMigrated', '1'); }
   return db;
@@ -139,6 +141,13 @@ export function migrateLoans(db: DB) {
     db.prepare(`UPDATE loans SET needs_input = 1, balance_date = COALESCE(balance_date, start_date) WHERE kind IN ('credit_card','overdraft') AND monthly_payment IS NULL AND payment_pct IS NULL`).run();
     setSetting(db, 'loansV13', '1');
   }
+}
+
+/** v1.5: accounts get an opening date (opening balance = balance on that day). Existing accounts: their creation day. */
+export function migrateAccountOpening(db: DB) {
+  const cols = (db.prepare('PRAGMA table_info(accounts)').all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes('opening_date')) { db.exec('ALTER TABLE accounts ADD COLUMN opening_date TEXT'); db.exec("UPDATE accounts SET opening_date = date(created_at, 'localtime')"); }
+  db.exec(`CREATE TRIGGER IF NOT EXISTS accounts_opening_date AFTER INSERT ON accounts WHEN NEW.opening_date IS NULL BEGIN UPDATE accounts SET opening_date = date('now','localtime') WHERE id = NEW.id; END`);
 }
 
 export function seedBuiltins(db: DB) {

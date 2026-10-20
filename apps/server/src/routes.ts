@@ -15,6 +15,7 @@ import * as sec from './security';
 import { seedDemo, resetData } from './seed';
 import { AI_DEFAULTS, SECRET_KEYS } from './statements/ai';
 import { importRoutes } from './statements/routes';
+import { merchantStats, monthSummary } from './merchants';
 import { termsRoutes } from './terms/routes';
 import { creditRoutes } from './credit/routes';
 import { syncRoutes } from './sync/routes';
@@ -32,7 +33,7 @@ const txSchema = z.object({
   notes: z.string().max(2000).nullable().optional(), tags: z.array(z.string().max(40)).max(20).default([]),
   rate: z.coerce.number().positive().optional(), rate_manual: z.boolean().optional(),
 });
-const accountSchema = z.object({ name: z.string().min(1).max(80), type: z.enum(['cash', 'bank', 'card', 'savings']), currency: currency.default('GEL'), opening_balance: money.default(0), color: z.string().default('#6366f1'), bank: z.string().max(80).nullable().optional(), liquid: z.boolean().default(true), archived: z.boolean().default(false) });
+const accountSchema = z.object({ name: z.string().min(1).max(80), type: z.enum(['cash', 'bank', 'card', 'savings']), currency: currency.default('GEL'), opening_balance: money.default(0), color: z.string().default('#6366f1'), bank: z.string().max(80).nullable().optional(), liquid: z.boolean().default(true), archived: z.boolean().default(false), opening_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() });
 const categorySchema = z.object({ name: z.string().min(1).max(60), kind: z.enum(['income', 'expense']), parent_id: optId, color: z.string().default('#64748b'), icon: z.string().default('circle'), essential: z.boolean().default(false), archived: z.boolean().default(false) });
 const recurringSchema = z.object({ kind: z.enum(['income', 'expense']), name: z.string().min(1).max(100), amount: money.positive(), currency: currency.default('GEL'), account_id: optId, category_id: optId, notes: z.string().nullable().optional(), tags: z.array(z.string()).default([]), unit, interval: z.coerce.number().int().min(1).max(1000), start_date: date, end_date: date.nullable().optional(), count: z.coerce.number().int().positive().nullable().optional(), auto_post: z.boolean().default(true), active: z.boolean().default(true) });
 const loanSchema = z.object({ kind: z.enum(['loan', 'mortgage', 'installment', 'credit_card', 'overdraft', 'credit_line', 'other']).default('loan'), monthly_payment: money.positive().nullable().optional(), payment_pct: z.coerce.number().min(0.1).max(100).nullable().optional(), min_payment: money.nonnegative().nullable().optional(), credit_limit: money.nonnegative().nullable().optional(), due_day: z.coerce.number().int().min(1).max(31).nullable().optional(), needs_input: z.coerce.number().int().min(0).max(1).optional(), monthly_fee: money.nonnegative().default(0), balance_date: date.nullable().optional(), name: z.string().min(1).max(100), bank: z.string().min(1).max(80), principal: money.nonnegative(), currency: currency.default('GEL'), annual_rate: z.coerce.number().min(0).max(200), term_months: z.coerce.number().int().min(0).max(600).default(0), start_date: date, extra_monthly: money.nonnegative().default(0), account_id: optId, notes: z.string().nullable().optional(), active: z.boolean().default(true) });
@@ -350,6 +351,8 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   app.post('/api/data/reset', async (req) => { const { confirm } = parse(z.object({ confirm: z.literal('DELETE') }), req.body); void confirm; resetData(db); return { ok: true }; });
   app.get('/api/meta', async () => ({ today: todayISO(), rates: latestRates(db), hasData: (db.prepare('SELECT COUNT(*) AS c FROM transactions').get() as { c: number }).c > 0 || (db.prepare('SELECT COUNT(*) AS c FROM accounts').get() as { c: number }).c > 0, baseCurrency: getSetting(db, 'baseCurrency') ?? 'GEL' }));
   void b; void amortize;
+  app.get('/api/merchants', async (req) => merchantStats(db, Math.min(24, Math.max(1, Number((req.query as any)?.months) || 6))));
+  app.get('/api/month-summary', async (req) => { const m = String((req.query as any)?.month ?? ''); if (!/^\d{4}-\d{2}$/.test(m)) throw Object.assign(new Error('month=YYYY-MM'), { statusCode: 400 }); return monthSummary(db, m); });
   importRoutes(app, db);
   creditRoutes(app, db);
   termsRoutes(app, db);

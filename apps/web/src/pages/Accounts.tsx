@@ -17,8 +17,8 @@ export default function Accounts() {
   if (!d.data) return <Spinner />;
   const total = d.data.filter((a) => !a.archived).reduce((s, a) => s + a.balance_gel, 0);
   const save = async (e: React.FormEvent) => {
-    e.preventDefault(); const { id, name, type, currency, opening_balance, color, bank, liquid, archived } = edit;
-    const body = { name, type, currency, opening_balance: Number(opening_balance), color, bank, liquid: !!liquid, archived: !!archived };
+    e.preventDefault(); const { id, name, type, currency, opening_balance, opening_date, color, bank, liquid, archived } = edit;
+    const body = { name, type, currency, opening_balance: Number(opening_balance), opening_date: opening_date || null, color, bank, liquid: !!liquid, archived: !!archived };
     if (await run(() => (id ? put(`/accounts/${id}`, body) : post('/accounts', body)), t('common.saved'))) setEdit(null);
   };
   const doTransfer = async (e: React.FormEvent) => { e.preventDefault(); if (await run(() => post('/transactions', { kind: 'transfer', amount: Number(transfer.amount), currency: transfer.currency, date: transfer.date, account_id: transfer.from, to_account_id: transfer.to, description: transfer.description || 'Transfer', tags: [] }), t('common.saved'))) setTransfer(null); };
@@ -40,6 +40,7 @@ export default function Accounts() {
         <div className="grid grid-cols-2 gap-3"><Field label={t('common.type')}><Select value={edit.type} onChange={(e) => setEdit({ ...edit, type: e.target.value })}>{['cash', 'bank', 'card', 'savings'].map((x) => <option key={x} value={x}>{t('acc.type.' + x)}</option>)}</Select></Field>
           <Field label={t('common.currency')}><CurrencySelect value={edit.currency} onChange={(c) => setEdit({ ...edit, currency: c })} /></Field></div>
         <div className="grid grid-cols-2 gap-3"><Field label={t('acc.opening')}><Input type="number" step="0.01" value={edit.opening_balance} onChange={(e) => setEdit({ ...edit, opening_balance: e.target.value })} /></Field>
+          <Field label={t('acc.openingDate')} hint={t('acc.openingDateHint')}><Input type="date" value={edit.opening_date ?? ''} onChange={(e) => setEdit({ ...edit, opening_date: e.target.value })} /></Field>
           <Field label={t('acc.bank')}><Input value={edit.bank ?? ''} onChange={(e) => setEdit({ ...edit, bank: e.target.value })} placeholder="TBC, Bank of Georgia…" /></Field></div>
         <Field label={t('cat.color')}><div className="flex gap-2 flex-wrap">{COLORS.map((c) => <button type="button" key={c} onClick={() => setEdit({ ...edit, color: c })} className={cn('h-8 w-8 rounded-full ring-offset-2 ring-offset-card', edit.color === c && 'ring-2 ring-foreground')} style={{ background: c }} />)}</div></Field>
         <Switch checked={!!edit.liquid} onChange={(v) => setEdit({ ...edit, liquid: v })} label={t('acc.liquid')} />

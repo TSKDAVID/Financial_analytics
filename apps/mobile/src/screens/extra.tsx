@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Alert, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FS from 'expo-file-system/legacy';
-import { Badge, Btn, Card, Empty, H2, Loading, Row, Screen, Seg, Sep, Stat, T, useColors } from '../ui';
-import { act, money, post, put, useQ, dateFmt } from '../lapi';
+import { Badge, Bar, Btn, Card, Empty, H2, Loading, Row, Screen, Seg, Sep, Sheet, Stat, T, useColors } from '../ui';
+import { Bars } from '../charts';
+import { InsightRow } from './money';
+import { act, money, post, put, useQ, dateFmt, monthFmt } from '../lapi';
 import type { ScreenProps } from './common';
 
 export const KIND_LABEL: Record<string, string> = { purchase: 'Purchase', subscription: 'Subscription', bill: 'Bill', topup: 'Top-up', cash_withdrawal: 'Cash withdrawal', cash_deposit: 'Cash deposit',
@@ -80,11 +82,14 @@ export function ImportGroupsScreen({ nav, params }: ScreenProps) {
 // ---------- People ----------
 export function PeopleScreen({ nav }: ScreenProps) {
   const c = useColors(); const p = useQ<any>('/people'); const [open, setOpen] = useState<string | null>(null);
+  const [sort, setSort] = useState<'sent' | 'received' | 'total' | 'net'>('sent');
+  const ranked = [...(p.data?.people ?? [])].filter((x: any) => !x.hidden).sort((a: any, b: any) => sort === 'net' ? Math.abs(b.net) - Math.abs(a.net) : sort === 'total' ? b.sent + b.received - a.sent - a.received : b[sort] - a[sort]);
   return <Screen title="People" back={nav.back} onRefresh={p.reload}>
     {!p.data ? <Loading /> : !p.data.people.length ? <Card><Empty icon="👥" title="No person-to-person transfers yet" body="Import a bank statement." /></Card> : <>
       <View style={{ flexDirection: 'row', gap: 10 }}><Stat label="Owed to you" value={money(p.data.owedToYou)} tone={c.success} /><Stat label="You owe" value={money(p.data.youOwe)} tone={c.danger} /></View>
-      <Card>{p.data.people.filter((x: any) => !x.hidden).map((x: any, i: number) => <View key={x.key}>{i > 0 && <Sep />}
-        <Row title={x.name} sub={`${PATTERN_LABEL[x.pattern]} · ×${x.count} · ${dateFmt(x.lastDate)}`} right={<T bold style={{ color: x.net > 0 ? c.success : x.net < 0 ? c.danger : c.text }}>{money(x.net)}</T>}
+      <Seg value={sort} options={[{ value: 'sent', label: 'Sent most' }, { value: 'received', label: 'Received' }, { value: 'total', label: 'Total' }, { value: 'net', label: 'Balance' }]} onChange={setSort} />
+      <Card>{ranked.map((x: any, i: number) => <View key={x.key}>{i > 0 && <Sep />}
+        <Row title={`${i + 1}. ${x.name}`} sub={`${PATTERN_LABEL[x.pattern]} · ×${x.count} · sent ${money(x.sent)} · got ${money(x.received)} · ${dateFmt(x.lastDate)}`} right={<T bold style={{ color: x.net > 0 ? c.success : x.net < 0 ? c.danger : c.text }}>{money(x.net)}</T>}
           onPress={() => setOpen(open === x.key ? null : x.key)} />
         {open === x.key && <View style={{ paddingBottom: 8, gap: 2 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>{Object.entries(PATTERN_LABEL).map(([k, l]) => <Btn key={k} small kind={x.pattern === k ? 'primary' : 'outline'} title={l} onPress={() => act(() => put(`/people/${encodeURIComponent(x.key)}`, { pattern: k }), 'Saved')} />)}</View>
@@ -113,4 +118,46 @@ export function BillCleanupNotice() {
     <T muted style={{ fontSize: 12 }}>Installments due before you started tracking no longer create expenses{v.removed?.length ? ` (${v.removed.length} removed, ${money(v.removedTotal)})` : ''}{v.redated?.length ? `; ${v.redated.length} late payments moved to their due date` : ''}.</T>
     {[...(v.removed ?? []), ...(v.redated ?? [])].slice(0, 12).map((b: any, i: number) => <T key={i} muted style={{ fontSize: 11 }}>{b.name} · due {dateFmt(b.due_date)} · {money(b.amount, b.currency)}</T>)}
     <Btn small kind="ghost" title="OK" onPress={() => act(() => post('/maintenance/bill-cleanup/seen'))} /></Card>;
+}
+
+// ---------- Merchants ----------
+export function MerchantsScreen({ nav }: ScreenProps) {
+  const c = useColors(); const [months, setMonths] = useState('6'); const d = useQ<any>(`/merchants?months=${months}`); const [open, setOpen] = useState<string | null>(null);
+  const x = d.data; const count = x ? x.merchants.reduce((s: number, m: any) => s + m.count, 0) : 0;
+  return <Screen title="Merchants" back={nav.back} onRefresh={d.reload}>
+    <Seg value={months} options={['3', '6', '12'].map((m) => ({ value: m, label: `${m} months` }))} onChange={setMonths} />
+    {!x ? <Loading /> : !x.merchants.length ? <Card><Empty icon="🏪" title="No merchant payments yet" body="Import a bank statement." /></Card> : <>
+      <View style={{ flexDirection: 'row', gap: 10 }}><Stat label="Spent at merchants" value={money(x.total)} /><Stat label="Payments" value={String(count)} sub={`avg ${money(count ? x.total / count : 0)}`} /></View>
+      {x.insights.length > 0 && <Card>{x.insights.map((i: any, k: number) => <InsightRow key={k} i={i} />)}</Card>}
+      <Card>{x.merchants.slice(0, 150).map((m: any, i: number) => { const diff = m.lastMonth ? m.thisMonth / m.lastMonth - 1 : null; return <View key={m.key}>{i > 0 && <Sep />}
+        <Row title={m.name} sub={`${m.category ?? ''} · ×${m.count} · avg ${money(m.avg)}`} right={<T bold>{money(m.total)}</T>}
+          rightSub={`this month ${money(m.thisMonth)}${diff === null ? '' : ` ${diff > 0 ? '▲' : '▼'}${Math.abs(Math.round(diff * 100))}%`}`} onPress={() => setOpen(open === m.key ? null : m.key)} />
+        {open === m.key && <View style={{ paddingBottom: 8 }}><T muted style={{ fontSize: 12 }}>Last month {money(m.lastMonth)} · usual {money(m.usualMonthly)}/month · last {dateFmt(m.last)}</T>
+          <Bars data={m.monthly} keys={['total']} colors={[c.primary]} height={70} label={(r) => monthFmt(r.month)} /></View>}
+      </View>; })}</Card></>}
+  </Screen>;
+}
+
+// ---------- Month drill-down ----------
+export function MonthSheet({ month, onClose }: { month: string | null; onClose: () => void }) {
+  const c = useColors(); const d = useQ<any>(month ? `/month-summary?month=${month}` : '/meta'); const x = month && d.data?.month === month ? d.data : null;
+  const max = x?.byCategory?.[0]?.total || 1;
+  return <Sheet open={!!month} title={month ? `${monthFmt(month)} overview` : ''} onClose={onClose}>
+    {!x ? <Loading /> : <>
+      <View style={{ flexDirection: 'row', gap: 8 }}><Stat label="Income" value={money(x.income)} tone={c.success} /><Stat label="Expenses" value={money(x.expense)} tone={c.danger} /><Stat label="Net" value={money(x.net)} tone={x.net < 0 ? c.danger : c.success} /></View>
+      <H2>Expenses by category</H2>{x.byCategory.map((k: any) => <View key={k.name} style={{ gap: 2, marginBottom: 4 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><T>{k.name} ×{k.count}</T><T bold>{money(k.total)}</T></View><Bar value={k.total / max} color={k.color} height={5} /></View>)}
+      <H2>Top merchants</H2>{x.topMerchants.map((m: any) => <Row key={m.name} title={m.name} sub={`×${m.count}`} right={money(m.total)} />)}
+      <H2>Income</H2>{x.incomeBy.map((m: any) => <Row key={m.name} title={m.name} right={<T style={{ color: c.success }}>{money(m.total)}</T>} />)}
+      {x.movedOwn > 0 && <T muted style={{ fontSize: 12 }}>Moved between your own accounts (not counted): {money(x.movedOwn)}</T>}
+    </>}
+  </Sheet>;
+}
+
+// ---------- Analytics fix notice ----------
+export function AnalyticsFixNotice() {
+  const c = useColors(); const n = useQ<any>('/maintenance/analytics-fix'); const f = n.data;
+  if (!f || f.seen || !f.before) return null; const r = (v: number) => Math.round(v).toLocaleString();
+  return <Card style={{ borderLeftWidth: 4, borderLeftColor: c.primary, gap: 6 }}><T bold>Analytics corrected</T>
+    <T muted>Transfers between your own accounts ({f.transferPairs} pairs) were counted as both spending and income, and money that went to people and came back counted too. Fixed: income {r(f.before.income)} → {r(f.after.income)} ₾, expenses {r(f.before.expense)} → {r(f.after.expense)} ₾ (all history). Reversible from Import.</T>
+    <Btn small title="Got it" onPress={async () => { await act(() => post('/maintenance/analytics-fix/seen')); n.reload(); }} /></Card>;
 }

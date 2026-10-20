@@ -86,6 +86,7 @@ function BatchView({ id }: { id: number }) {
     <Card title={<span className="flex items-center gap-2">{d.filename}<Badge tone={statusTone[d.status]}>{t('imp.' + d.status)}</Badge></span>}
       subtitle={`${t('imp.bank')}: ${d.bank} · ${t('imp.period')}: ${dateFmt(d.period_from)} – ${dateFmt(d.period_to)}`}
       action={<div className="flex flex-wrap gap-2">
+        {!locked && pending > 0 && <span className="text-xs text-muted-foreground">{t('imp.autoConfirmNote')}</span>}
         {!locked && pending > 0 && <Button disabled={busy} onClick={() => run(() => post(`/imports/${id}/approve`, {}), t('imp.approved'))}><Check className="h-4 w-4" />{d.status === 'reverted' ? t('imp.reapprove') : t('imp.approveAll', { n: pending })}</Button>}
         {!locked && pendingIds.length > 0 && <Button variant="outline" disabled={busy} onClick={() => run(() => post(`/imports/${id}/approve`, { ids: pendingIds }), t('imp.approved')).then(() => setPicked(new Set()))}>{t('imp.approveSel', { n: pendingIds.length })}</Button>}
         {s.posted > 0 && <Button variant="outline" disabled={busy} onClick={() => confirm(t('imp.revertConfirm', { n: s.posted })) && run(() => post(`/imports/${id}/revert`), t('imp.reverted'))}><Undo2 className="h-4 w-4" />{t('imp.revert')}</Button>}

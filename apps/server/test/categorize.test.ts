@@ -65,10 +65,10 @@ describe('import pipeline', () => {
     const t: any = analyze(db, tbc); expect(t.totals.expense).toBe(0); expect(t.excluded.friends).toBe(200);
     expect((people(db) as any).people[0]).toMatchObject({ pattern: 'lent_repaid', net: 0 });
     expect((clusters(db, tbc) as any).transfers).toHaveLength(1);
-    decideMatch(db, ms[0].id, 'confirmed');
+    await decideMatch(db, ms[0].id, 'confirmed');
     await approve(db, bog); await approve(db, tbc);
     const tx = db.prepare('SELECT kind, COUNT(*) c FROM transactions GROUP BY kind ORDER BY kind').all();
-    expect(tx).toEqual([{ kind: 'expense', c: 3 }, { kind: 'income', c: 1 }, { kind: 'transfer', c: 2 }]); // nikora + fee + p2p out; p2p in; matched transfer once + piggy
+    expect(tx).toEqual([{ kind: "expense", c: 2 }, { kind: "transfer", c: 4 }]); // nikora + fee; matched transfer + piggy + the 2 netted friend legs (lent and repaid)
     revert(db, tbc); revert(db, bog);
     expect(db.prepare('SELECT COUNT(*) FROM transactions').pluck().get()).toBe(0);
   });

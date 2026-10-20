@@ -3,7 +3,7 @@ import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { Badge, Bar, Btn, Card, Chip, Empty, H2, Input, Loading, NumInput, Pick, Row, Screen, Seg, Sep, Sheet, Stat, T, Toggle, useColors } from '../ui';
 import { Bars, Donut, LineChart } from '../charts';
 import { act, del, money, pct, post, put, useQ, dateFmt, monthFmt, todayISO, CHART_COLORS } from '../lapi';
-import { OverdueButton, BillCleanupNotice } from './extra';
+import { OverdueButton, BillCleanupNotice, AnalyticsFixNotice, MonthSheet } from './extra';
 import { AccountPick, CategoryPick, CurrencyPick, NoData, UNITS, num, type ScreenProps } from './common';
 
 // ---------- Dashboard ----------
@@ -11,13 +11,14 @@ export function Dashboard({ nav }: ScreenProps) {
   const c = useColors(); const d = useQ<any>('/dashboard'); const ins = useQ<any[]>('/insights'); const bills = useQ<any[]>('/bills/upcoming');
   if (!d.data) return <Loading />;
   const x = d.data; const ok = x.dataStatus?.sufficient;
+  const [month, setMonth] = useState<string | null>(null);
   return <Screen title="Overview" onRefresh={d.reload} fab={{ label: 'Transaction', onPress: () => nav.push('txForm') }}>
     <Card style={{ backgroundColor: c.primary, borderWidth: 0 }}>
       <Text style={{ color: '#ffffffcc', fontSize: 13 }}>Net worth</Text>
       <Text style={{ color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 2 }}>{money(x.netWorth)}</Text>
       <View style={{ flexDirection: 'row', marginTop: 10, gap: 16 }}><Text style={{ color: '#ffffffcc', fontSize: 12 }}>Assets {money(x.totalAssets, 'GEL', true)}</Text><Text style={{ color: '#ffffffcc', fontSize: 12 }}>Debt {money(x.totalDebt, 'GEL', true)}</Text></View>
     </Card>
-    <BillCleanupNotice /><OverdueButton />
+    <BillCleanupNotice /><AnalyticsFixNotice /><OverdueButton />
     <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
       <Stat label="Income (month)" value={money(x.income)} tone={c.success} /><Stat label="Expenses (month)" value={money(x.expense)} tone={c.danger} />
     </View>
@@ -26,7 +27,9 @@ export function Dashboard({ nav }: ScreenProps) {
       <Stat label="Savings rate" value={ok && x.income > 0 ? pct(x.savingsRate) : '—'} sub={ok ? undefined : 'needs income & expenses'} />
     </View>
     {!ok ? <Card><NoData nav={nav} what="Add income and expenses to see trends" /></Card> : <>
-      <Card><H2>Last 12 months</H2><View style={{ height: 8 }} /><Bars data={x.trend} keys={['income', 'expense']} colors={[c.success, c.danger]} label={(d) => monthFmt(d.month)} /></Card>
+      <Card><H2>Last 12 months</H2><T muted style={{ fontSize: 11 }}>Tap a month for details</T><View style={{ height: 8 }} /><Bars data={x.trend} keys={['income', 'expense']} colors={[c.success, c.danger]} label={(d) => monthFmt(d.month)} onPick={(d) => setMonth(d.month)} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>{x.trend.slice(-6).map((m: any) => <Btn key={m.month} small kind="outline" title={monthFmt(m.month)} onPress={() => setMonth(m.month)} />)}</View></Card>
+      <MonthSheet month={month} onClose={() => setMonth(null)} />
       {x.byCategory.length > 0 && <Card><H2>Spending by category</H2><View style={{ height: 10 }} /><Donut data={x.byCategory.slice(0, 7).map((k: any, i: number) => ({ label: k.name, value: k.total, color: k.color ?? CHART_COLORS[i % 10] }))} /></Card>}
     </>}
     {(bills.data ?? []).length > 0 && <Card><H2 right={<Btn small kind="ghost" title="All" onPress={() => nav.push('subscriptions')} />}>Upcoming bills</H2>
@@ -37,6 +40,8 @@ export function Dashboard({ nav }: ScreenProps) {
   </Screen>;
 }
 const INS: Record<string, string> = {
+  mTop: 'Your biggest merchant is {merchant}: {amount} ₾ ({pct}% of merchant spending) in {count} payments.', mHabit: 'Habit: {count} payments at {merchant}, about {avg} ₾ each — roughly {monthly} ₾ a month.',
+  mUp: '{merchant}: {amount} ₾ this month, {pct}% more than your usual {usual} ₾.', mSmall: '{count} small payments (under 10 ₾ each) added up to {amount} ₾ — mostly {names}.',
   catAbove: '{category} spending is on track to be {pct}% above your usual {avg} ₾/month.', catBelow: 'Nice — {category} spending is {pct}% below your average this month.',
   seasonWinter: 'Your {category} bill rises every winter — plan for higher bills in Nov–Feb.', seasonSummer: 'Your {category} bill peaks in summer.',
   savingsGood: 'You saved {pct}% of income over the last 3 months — great job.', savingsLow: 'You saved only {pct}% of income over the last 3 months. Aim for 20%.', savingsNegative: 'You spent more than you earned over the last 3 months ({pct}% savings rate).',
@@ -103,13 +108,14 @@ export function Accounts({ nav }: ScreenProps) {
         onPress={() => nav.push('transactions', { account_id: x.id, title: x.name })} /><View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: -8 }}><Btn small kind="ghost" title="Edit" onPress={() => setEdit({ ...x, opening_balance: String(x.opening_balance), liquid: !!x.liquid, archived: !!x.archived })} /></View></View>)}</Card>
     {edit && <Sheet open title={edit.id ? 'Edit account' : 'New account'} onClose={() => setEdit(null)} footer={<>
       {edit.id && <Btn kind="danger" title="Delete" onPress={() => Alert.alert('Delete account?', 'Transactions stay but lose their account.', [{ text: 'Cancel' }, { text: 'Delete', style: 'destructive', onPress: async () => { if (await act(() => del(`/accounts/${edit.id}`))) setEdit(null); } }])} />}
-      <Btn title="Save" style={{ flex: 1 }} onPress={async () => { const b = { name: edit.name, type: edit.type, currency: edit.currency, opening_balance: num(edit.opening_balance) ?? 0, color: edit.color, bank: edit.bank || null, liquid: edit.liquid, archived: !!edit.archived };
+      <Btn title="Save" style={{ flex: 1 }} onPress={async () => { const b = { name: edit.name, type: edit.type, currency: edit.currency, opening_balance: num(edit.opening_balance) ?? 0, opening_date: /^\d{4}-\d{2}-\d{2}$/.test(edit.opening_date ?? '') ? edit.opening_date : null, color: edit.color, bank: edit.bank || null, liquid: edit.liquid, archived: !!edit.archived };
         if (await act(() => (edit.id ? put(`/accounts/${edit.id}`, b) : post('/accounts', b)), 'Saved')) setEdit(null); }} /></>}>
       <Input label="Name" value={edit.name} onChangeText={(v) => setEdit({ ...edit, name: v })} />
       <Pick label="Type" value={edit.type} options={ACC_TYPES} onChange={(v) => setEdit({ ...edit, type: v })} />
       <Input label="Bank" value={edit.bank ?? ''} onChangeText={(v) => setEdit({ ...edit, bank: v })} placeholder="TBC Bank" />
       <CurrencyPick value={edit.currency} onChange={(v) => setEdit({ ...edit, currency: v })} />
       <NumInput label="Opening balance" value={edit.opening_balance} onChange={(v) => setEdit({ ...edit, opening_balance: v })} />
+      <Input label="Balance as of (YYYY-MM-DD)" hint="Only transactions after this date change the balance." value={edit.opening_date ?? ''} onChangeText={(v) => setEdit({ ...edit, opening_date: v })} placeholder="2026-10-20" />
       <Pick label="Color" value={edit.color} options={COLORS.map((c) => ({ value: c, label: '●', color: c }))} onChange={(v) => setEdit({ ...edit, color: v })} />
       <Toggle label="Counts as liquid savings" value={edit.liquid} onChange={(v) => setEdit({ ...edit, liquid: v })} />
       {edit.id && <Toggle label="Archived" value={edit.archived} onChange={(v) => setEdit({ ...edit, archived: v })} />}

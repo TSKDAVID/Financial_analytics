@@ -113,8 +113,12 @@ export function catTree(db: DB, id: number): number[] {
 export function accountBalances(db: DB) {
   const accounts = db.prepare('SELECT * FROM accounts ORDER BY archived, id').all() as AccountRow[];
   const rates = latestRates(db);
-  const flows = db.prepare(`SELECT account_id AS id, SUM(CASE WHEN kind='income' THEN amount_gel WHEN kind IN ('expense','transfer') THEN -amount_gel END) AS gel FROM transactions GROUP BY account_id`).all() as { id: number; gel: number }[];
-  const inflow = db.prepare(`SELECT to_account_id AS id, SUM(amount_gel) AS gel FROM transactions WHERE kind='transfer' GROUP BY to_account_id`).all() as { id: number; gel: number }[];
+  // the opening balance is the balance ON the opening date: only transactions from that day on move it
+  // (otherwise back-dated history — imported or auto-posted — would be counted twice)
+  const flows = db.prepare(`SELECT t.account_id AS id, SUM(CASE WHEN t.kind='income' THEN t.amount_gel WHEN t.kind IN ('expense','transfer') THEN -t.amount_gel END) AS gel
+    FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.opening_date IS NULL OR t.date >= a.opening_date GROUP BY t.account_id`).all() as { id: number; gel: number }[];
+  const inflow = db.prepare(`SELECT t.to_account_id AS id, SUM(t.amount_gel) AS gel FROM transactions t JOIN accounts a ON a.id = t.to_account_id
+    WHERE t.kind='transfer' AND (a.opening_date IS NULL OR t.date >= a.opening_date) GROUP BY t.to_account_id`).all() as { id: number; gel: number }[];
   const fm = new Map(flows.map((f) => [f.id, f.gel])), im = new Map(inflow.map((f) => [f.id, f.gel]));
   return accounts.map((a) => {
     const rate = rates[a.currency] ?? 1;

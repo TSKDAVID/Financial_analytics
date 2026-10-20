@@ -12,13 +12,13 @@ import { Btn, Center, Sheet, T, useColors } from './src/ui';
 import type { Nav } from './src/screens/common';
 import { Accounts, Categories, Dashboard, Recurring, Transactions, TxForm } from './src/screens/money';
 import { Alerts, Budgets, Forecast, Insights, Loans, Reports, Risk, Schedule, Subscriptions } from './src/screens/plan';
-import { CardTermsScreen, ImportGroupsScreen, PeopleScreen } from './src/screens/extra';
+import { CardTermsScreen, ImportGroupsScreen, PeopleScreen, MerchantsScreen } from './src/screens/extra';
 import { BatchScreen, CreditReportScreen, ImportScreen, More, SettingsScreen, SummaryView, SyncScreen } from './src/screens/app';
 
 const SCREENS: Record<string, (p: any) => any> = {
   txForm: TxForm, transactions: Transactions, accounts: Accounts, categories: Categories, recurring: Recurring, loans: Loans, schedule: Schedule,
   subscriptions: Subscriptions, budgets: Budgets, forecast: Forecast, insights: Insights, risk: Risk, alerts: Alerts, reports: Reports,
-  import: ImportScreen, batch: BatchScreen, importGroups: ImportGroupsScreen, people: PeopleScreen, cardTerms: CardTermsScreen, creditReport: CreditReportScreen, sync: SyncScreen, settings: SettingsScreen,
+  import: ImportScreen, batch: BatchScreen, importGroups: ImportGroupsScreen, people: PeopleScreen, merchants: MerchantsScreen, cardTerms: CardTermsScreen, creditReport: CreditReportScreen, sync: SyncScreen, settings: SettingsScreen,
 };
 const TABS = [{ key: 'home', label: 'Home', icon: '◎' }, { key: 'tx', label: 'Money', icon: '⇄' }, { key: 'plan', label: 'Budgets', icon: '◔' }, { key: 'alerts', label: 'Alerts', icon: '🔔' }, { key: 'more', label: 'More', icon: '☰' }] as const;
 

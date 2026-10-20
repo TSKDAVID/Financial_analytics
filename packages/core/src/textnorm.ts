@@ -51,3 +51,11 @@ export function isPersonName(s?: string | null): boolean {
   const w = s.trim().split(/\s+/);
   return w.length >= 2 && w.length <= 4 && w.every((x) => /^[\p{L}-]{2,}$/u.test(x)) && !ORG.test(normText(s));
 }
+
+const GEO_NOT_PERSON = /მეტრო|ავტობუს|საბაგირ|მარკეტ|აფთიაქ|კაფე|რესტორ|მაღაზი|ცენტრ|სერვის|კლინიკ|სალონ|ბარი|ჰოსტელ|სასტუმრ/;
+/** A bare Georgian "Surname Name" ("უბილავა ლულა") printed where a merchant would be: a person, not a shop.
+ *  Genitive place names ("თბილისის მეტრო") and shop words are excluded. */
+export function isBarePersonName(s?: string | null): boolean {
+  const x = s?.trim() ?? '';
+  return /^[\u10D0-\u10FF]{2,}(?:-[\u10D0-\u10FF]{2,})?\s+[\u10D0-\u10FF]{2,}(?:-[\u10D0-\u10FF]{2,})?$/.test(x) && isPersonName(x) && !/ის(\s|$)/.test(x) && !GEO_NOT_PERSON.test(x);
+}

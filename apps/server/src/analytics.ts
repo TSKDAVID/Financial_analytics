@@ -1,3 +1,4 @@
+import { merchantStats } from './merchants';
 import {
   addDays, addMonths, endOfMonth, monthKey, startOfMonth, todayISO, forecast, dailyProjection, healthScore, dtiLevel, stressTest,
   detectAnomalies, isSpike, seasonality, mean, diffDays, monthsBetween,
@@ -103,16 +104,24 @@ export function insights(db: DB): Insight[] {
   const status = dataStatus(db);
   const curFrom = startOfMonth(today);
   const dayFrac = Math.max(0.1, Number(today.slice(8)) / Number(endOfMonth(today).slice(8)));
-  const cats = db.prepare("SELECT id, name, key FROM categories WHERE kind='expense' AND parent_id IS NULL").all() as { id: number; name: string; key: string }[];
+  // money sent to people, cash, fees and loans are not "spending categories" you can compare month to month
+  const cats = db.prepare("SELECT id, name, key FROM categories WHERE kind='expense' AND parent_id IS NULL AND COALESCE(key,'') NOT IN ('p2p_out','cash','fees','loans','taxes')").all() as { id: number; name: string; key: string }[];
+  const histFrom = startOfMonth(addMonths(today, -6));
+  const firstTx = (db.prepare("SELECT MIN(date) FROM transactions WHERE kind='expense'").pluck().get() as string | null) ?? today;
+  const histMonths = monthsBetween(firstTx > histFrom ? startOfMonth(firstTx) : histFrom, addMonths(today, -1)).filter((m) => m < monthKey(today));
   for (const c of cats) {
     const ids = catTree(db, c.id).join(',');
-    const rows = db.prepare(`SELECT substr(date,1,7) AS m, SUM(amount_gel) AS s FROM transactions WHERE kind='expense' AND recurring_id IS NULL AND loan_id IS NULL AND subscription_id IS NULL AND category_id IN (${ids}) AND date BETWEEN ? AND ? GROUP BY m`).all(startOfMonth(addMonths(today, -6)), today) as { m: string; s: number }[];
+    const rows = db.prepare(`SELECT substr(date,1,7) AS m, SUM(amount_gel) AS s, COUNT(*) AS n FROM transactions WHERE kind='expense' AND recurring_id IS NULL AND loan_id IS NULL AND subscription_id IS NULL AND category_id IN (${ids}) AND date BETWEEN ? AND ? GROUP BY m`).all(histFrom, today) as { m: string; s: number; n: number }[];
     const cur = rows.find((r) => r.m === monthKey(today))?.s ?? 0;
-    const hist = rows.filter((r) => r.m !== monthKey(today)).map((r) => r.s);
-    if (hist.length >= 2) {
-      const avg = mean(hist), projected = cur / dayFrac;
+    // every past month counts (a month without rent is a 0, not skipped)
+    const hist = histMonths.map((m) => rows.find((r) => r.m === m)?.s ?? 0);
+    const perMonth = mean(histMonths.map((m) => rows.find((r) => r.m === m)?.n ?? 0));
+    if (hist.filter((h) => h > 0).length >= 2) {
+      // only extrapolate frequent small spending (groceries, taxi…); one-off bills like rent are compared as paid so far
+      const frequent = perMonth >= 6;
+      const avg = frequent ? mean(hist) : mean(hist.filter((h) => h > 0)), projected = frequent ? Math.max(cur, cur / dayFrac) : cur;
       if (avg > 50 && projected > avg * 1.25 && cur > avg * 0.5) out.push({ key: 'catAbove', severity: 'warning', params: { category: c.name, pct: Math.round((projected / avg - 1) * 100), avg: Math.round(avg) } });
-      else if (avg > 50 && dayFrac > 0.8 && projected < avg * 0.75) out.push({ key: 'catBelow', severity: 'success', params: { category: c.name, pct: Math.round((1 - projected / avg) * 100) } });
+      else if (avg > 50 && (frequent ? dayFrac > 0.8 && projected < avg * 0.75 : cur > 0 && cur < avg * 0.9)) out.push({ key: 'catBelow', severity: 'success', params: { category: c.name, pct: Math.round((1 - projected / avg) * 100) } });
     }
   }
   // seasonality for utilities subcategories
@@ -139,15 +148,20 @@ export function insights(db: DB): Insight[] {
   if (fc.insufficient) { /* no forecast insights without history */ }
   else if (fc.firstBelow) out.push({ key: 'forecastBelow', severity: 'danger', params: { month: fc.firstBelow, min: fc.minBalance ?? 0 } });
   else if (fc.base.length) out.push({ key: 'forecastOk', severity: 'success', params: { amount: Math.round(fc.base[fc.base.length - 1].expected), months: 6 } });
+  // merchant findings: rising regulars first, then the habit summary
+  const mi = merchantStats(db, 6).insights; out.push(...mi.filter((i) => i.key === 'mUp').slice(0, 2), ...mi.filter((i) => i.key === 'mHabit'));
   void curFrom;
   return out;
 }
 
 export function anomaliesList(db: DB) {
+  // people transfers, cash and fees are not "unusual purchases"
   const rows = db.prepare(`SELECT t.id, t.date, t.amount_gel, t.category_id, t.kind, t.description, c.name AS category FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-    WHERE t.date >= ? AND t.kind = 'expense' AND t.loan_id IS NULL`).all(addMonths(todayISO(), -6)) as any[];
-  const res = detectAnomalies(rows.map((r) => ({ id: r.id, date: r.date, amount: r.amount_gel, categoryId: r.category_id, kind: r.kind })));
-  const map = new Map(rows.map((r) => [r.id, r]));
+    WHERE t.date >= ? AND t.kind = 'expense' AND t.loan_id IS NULL AND COALESCE(t.tx_kind, '') NOT IN ('transfer_out', 'cash_withdrawal', 'fee', 'loan_repayment') AND COALESCE(c.key, '') NOT IN ('p2p_out', 'cash', 'fees', 'loans')`).all(addMonths(todayISO(), -6)) as any[];
+  const map0 = new Map(rows.map((r) => [r.id, r]));
+  // a 15 GEL scooter ride is not news even if rides are usually 2 GEL: require a meaningful amount
+  const res = detectAnomalies(rows.map((r) => ({ id: r.id, date: r.date, amount: r.amount_gel, categoryId: r.category_id, kind: r.kind }))).filter((a) => (map0.get(a.id)?.amount_gel ?? 0) >= Math.max(50, a.median * 3));
+  const map = map0;
   return res.map((a) => ({ ...map.get(a.id), score: a.score, median: a.median })).filter((a) => a.date >= addDays(todayISO(), -60)).sort((a, b) => b.date.localeCompare(a.date));
 }
 
