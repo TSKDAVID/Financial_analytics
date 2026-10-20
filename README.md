@@ -169,3 +169,8 @@ On a credit card or credit line, **Card terms** lets you upload the bank's "key 
 ## Android build: crash-safe startup
 
 `android/` is generated (not in git). After `npx expo prebuild`, run `npm run patch:android -w apps/mobile` (or `node apps/mobile/scripts/patch-android.cjs`) before `./gradlew assembleRelease`. It adds `CrashActivity`: if the app fails while starting (native or fatal JS error), it shows the error text with **Copy** / **Try again** instead of closing. Render errors are shown by a JS error boundary.
+
+## Mobile checks
+
+- `npm run lint` now covers `apps/mobile` with `react-hooks/rules-of-hooks` as an error. A hook after an early return, or inside a condition or loop, fails lint.
+- `npm run test:mobile` (Node 20) renders every mobile screen twice: once with an empty database and once with sample data, using the real phone engine with native modules stubbed. It fails if a screen throws or React reports a hooks-order error.

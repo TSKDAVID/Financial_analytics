@@ -14,3 +14,4 @@ apps/mobile/ios/
 *.jks
 keystore.properties
 private/
+apps/mobile/test/.smoke.cjs

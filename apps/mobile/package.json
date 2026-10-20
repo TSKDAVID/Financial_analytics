@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "react-test-renderer": "^19.3.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -37,7 +38,8 @@
     "apk": "npx eas-cli@latest build -p android --profile preview",
     "apk:local": "node scripts/build-pdfjs.cjs && npx expo prebuild -p android && cd android && ./gradlew assembleRelease",
     "postinstall": "node scripts/build-pdfjs.cjs",
-    "patch:android": "node scripts/patch-android.cjs"
+    "patch:android": "node scripts/patch-android.cjs",
+    "test:smoke": "node test/smoke.mjs"
   },
   "private": true
 }

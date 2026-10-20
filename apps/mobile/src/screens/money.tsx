@@ -9,9 +9,9 @@ import { AccountPick, CategoryPick, CurrencyPick, NoData, UNITS, num, type Scree
 // ---------- Dashboard ----------
 export function Dashboard({ nav }: ScreenProps) {
   const c = useColors(); const d = useQ<any>('/dashboard'); const ins = useQ<any[]>('/insights'); const bills = useQ<any[]>('/bills/upcoming');
+  const [month, setMonth] = useState<string | null>(null);
   if (!d.data) return <Loading />;
   const x = d.data; const ok = x.dataStatus?.sufficient;
-  const [month, setMonth] = useState<string | null>(null);
   return <Screen title="Overview" onRefresh={d.reload} fab={{ label: 'Transaction', onPress: () => nav.push('txForm') }}>
     <Card style={{ backgroundColor: c.primary, borderWidth: 0 }}>
       <Text style={{ color: '#ffffffcc', fontSize: 13 }}>Net worth</Text>
