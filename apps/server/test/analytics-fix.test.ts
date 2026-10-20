@@ -126,3 +126,19 @@ describe('v1.2.2 balances, recurring duplicates, transaction dates', () => {
     expect(transactionDate('contract 01.01.2020', '2026-10-06')).toBe('2026-10-06');
   });
 });
+describe('recurring salary rule', () => {
+  it('maps Salary to Income › Salary and a deleted occurrence is never re-posted', async () => {
+    const { materialize } = await import('../src/services');
+    const { skipRecurringOf, migrateSalaryRules } = await import('../src/reconcile');
+    const db = openDb(':memory:');
+    const rid = Number(db.prepare("INSERT INTO recurring (kind, name, amount, currency, category_id, unit, interval, start_date) VALUES ('income','Salary',450,'GEL',?,'week',2,?)").run(cat(db, 'gifts'), todayISO()).lastInsertRowid);
+    migrateSalaryRules(db);
+    expect(db.prepare('SELECT category_id FROM recurring WHERE id = ?').pluck().get(rid)).toBe(cat(db, 'salary'));
+    await materialize(db);
+    const t = db.prepare('SELECT id, confirmed FROM transactions WHERE recurring_id = ?').get(rid) as any; expect(t.confirmed).toBe(0);
+    skipRecurringOf(db, t.id); db.prepare('DELETE FROM transactions WHERE id = ?').run(t.id);
+    db.prepare('UPDATE recurring SET generated_until = NULL WHERE id = ?').run(rid); // e.g. after editing the rule
+    await materialize(db);
+    expect(db.prepare('SELECT COUNT(*) FROM transactions WHERE recurring_id = ?').pluck().get(rid)).toBe(0);
+  });
+});

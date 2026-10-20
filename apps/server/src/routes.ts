@@ -16,6 +16,7 @@ import { seedDemo, resetData } from './seed';
 import { AI_DEFAULTS, SECRET_KEYS } from './statements/ai';
 import { importRoutes } from './statements/routes';
 import { merchantStats, monthSummary } from './merchants';
+import { skipRecurringOf, migrateSalaryRules } from './reconcile';
 import { termsRoutes } from './terms/routes';
 import { creditRoutes } from './credit/routes';
 import { syncRoutes } from './sync/routes';
@@ -141,7 +142,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
     return db.prepare('SELECT * FROM transactions WHERE id = ?').get(tid);
   });
   app.post('/api/transactions/:id/confirm', async (req) => { const tid = parse(id, P(req).id); db.prepare('UPDATE transactions SET confirmed = 1 WHERE id = ?').run(tid); return db.prepare('SELECT * FROM transactions WHERE id = ?').get(tid); });
-  app.delete('/api/transactions/:id', async (req) => { const tid = parse(id, P(req).id); db.prepare('UPDATE bills SET paid = 0, paid_date = NULL, transaction_id = NULL WHERE transaction_id = ?').run(tid); db.prepare('DELETE FROM transactions WHERE id = ?').run(tid); return { ok: true }; });
+  app.delete('/api/transactions/:id', async (req) => { const tid = parse(id, P(req).id); skipRecurringOf(db, tid); db.prepare('UPDATE bills SET paid = 0, paid_date = NULL, transaction_id = NULL WHERE transaction_id = ?').run(tid); db.prepare('DELETE FROM transactions WHERE id = ?').run(tid); return { ok: true }; });
   app.post('/api/transactions/bulk', async (req) => {
     const { ids, action, patch } = parse(z.object({ ids: z.array(id).min(1).max(5000), action: z.enum(['delete', 'update', 'addTag', 'removeTag']), patch: z.object({ category_id: optId, account_id: optId, kind: z.enum(['income', 'expense']).optional(), date: date.optional(), tag: z.string().optional(), notes: z.string().optional() }).default({}) }), req.body);
     const ph = ids.map(() => '?').join(',');
@@ -187,7 +188,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
     const r = parse(recurringSchema.pick({ unit: true, interval: true, start_date: true, end_date: true, count: true }), req.body);
     return occurrences({ unit: r.unit, interval: r.interval, start: r.start_date, end: r.end_date, count: r.count }, r.start_date, addMonths(r.start_date, 60)).slice(0, 12);
   });
-  crud('recurring', 'recurring', recurringSchema, refresh);
+  crud('recurring', 'recurring', recurringSchema, async () => { migrateSalaryRules(db); await refresh(); });
 
   // ---------- currency ----------
   app.get('/api/rates', async (req) => {

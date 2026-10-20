@@ -1,4 +1,4 @@
-import { importedMatch } from './reconcile';
+import { importedMatch, isSkipped } from './reconcile';
 import {
   addDays, addMonths, amortize, balanceAsOf, monthKey, occurrences, startOfMonth, endOfMonth, todayISO, nextOccurrence,
   perMonthFactor, type RecurringFlow, type FreqUnit, type LoanInput, mean, stdev,
@@ -51,6 +51,7 @@ export async function materialize(db: DB, today = todayISO()) {
     for (const d of dates) {
       try {
         // the real payment is already imported from a statement: don't post the planned one on top
+        if (isSkipped(db, r.id, d)) { db.prepare('UPDATE recurring SET generated_until = ? WHERE id = ?').run(d, r.id); continue; }
         if (importedMatch(db, r.kind, r.category_id, r.amount * (latestRates(db)[r.currency] ?? 1), d)) { db.prepare('UPDATE recurring SET generated_until = ? WHERE id = ?').run(d, r.id); continue; }
         await insertTransaction(db, { kind: r.kind, amount: r.amount, currency: r.currency, date: d, account_id: r.account_id, category_id: r.category_id, description: r.name, notes: r.notes, tags: r.tags, recurring_id: r.id }).then((id) => db.prepare('UPDATE transactions SET confirmed = 0 WHERE id = ?').run(id));
       } catch { break; /* missing rate offline: retry later */ }

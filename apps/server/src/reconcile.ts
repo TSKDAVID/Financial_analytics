@@ -60,3 +60,26 @@ export function restoreReconciled(db: DB, importedIds?: number[]) {
   } })();
   return { restored: rows.length };
 }
+
+/** Deleting an auto-posted occurrence means "this one didn't happen": remember it so it is never posted again. */
+export function ensureSkipTable(db: DB) { db.exec('CREATE TABLE IF NOT EXISTS recurring_skips (recurring_id INTEGER NOT NULL, date TEXT NOT NULL, PRIMARY KEY (recurring_id, date))'); }
+export function skipRecurringOf(db: DB, txId: number) {
+  ensureSkipTable(db);
+  const t = db.prepare('SELECT recurring_id, date FROM transactions WHERE id = ?').get(txId) as { recurring_id: number | null; date: string } | undefined;
+  if (t?.recurring_id) db.prepare('INSERT OR IGNORE INTO recurring_skips (recurring_id, date) VALUES (?,?)').run(t.recurring_id, t.date);
+}
+export function isSkipped(db: DB, recurringId: number, date: string) { ensureSkipTable(db); return !!db.prepare('SELECT 1 FROM recurring_skips WHERE recurring_id = ? AND date = ?').get(recurringId, date); }
+const SALARY = /salary|wage|payroll|ხელფას/i;
+/** "Salary" filed under Gifts (or nothing) belongs in Income › Salary. */
+export function salaryCategory(db: DB, name: string, kind: string, categoryId: number | null | undefined): number | null | undefined {
+  if (kind !== 'income' || !SALARY.test(name)) return categoryId;
+  const key = categoryId ? db.prepare('SELECT key FROM categories WHERE id = ?').pluck().get(categoryId) : null;
+  if (key && key !== 'gifts' && key !== 'other_income') return categoryId;
+  return (db.prepare("SELECT id FROM categories WHERE key = 'salary'").pluck().get() as number | undefined) ?? categoryId;
+}
+export function migrateSalaryRules(db: DB) {
+  for (const r of db.prepare("SELECT id, name, kind, category_id FROM recurring WHERE kind = 'income'").all() as any[]) {
+    const c = salaryCategory(db, r.name, r.kind, r.category_id);
+    if (c !== r.category_id) { db.prepare('UPDATE recurring SET category_id = ? WHERE id = ?').run(c, r.id); db.prepare('UPDATE transactions SET category_id = ? WHERE recurring_id = ? AND category_id IS ?').run(c, r.id, r.category_id); }
+  }
+}

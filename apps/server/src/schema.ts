@@ -1,4 +1,4 @@
-import { reconcileRecurring, ensureReconcileTable } from './reconcile';
+import { reconcileRecurring, ensureReconcileTable, migrateSalaryRules } from './reconcile';
 // Pure schema + settings helpers, shared by the Node server and the offline Android app (no Node imports here).
 import { migrateImports, migrateAnalyticsFix, migrateTransactionDates } from './statements/service';
 import { migrateCredit } from './credit/service';
@@ -121,6 +121,7 @@ export function initDb(db: DB) {
   migrateTransactionDates(db);
   migrateAnalyticsFix(db);
   migrateRecurringReconcile(db);
+  migrateSalaryRules(db);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
   if (!getSetting(db, 'minBalanceMigrated')) { if (getSetting(db, 'minBalance') === '300') setSetting(db, 'minBalance', ''); setSetting(db, 'minBalanceMigrated', '1'); }
   return db;

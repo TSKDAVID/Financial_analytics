@@ -159,3 +159,9 @@ Go to **Statement import → Credit report (Creditinfo)** and upload the "ჩე
 ## Card / loan key-terms import
 
 On a credit card or credit line, **Card terms** lets you upload the bank's "key terms" PDF (Liberty Bank Top Card is supported first). The PDF is parsed locally. It reads the limit, the rate type, the annual and effective rates for the recommended payment and for the minimum payment, the minimum payment, the cash-out fee, the late fees and the contract end date. On cards with two rates, you choose which payment you usually make, and the matching rate is used. You see every change before it is applied. Nothing changes until you approve. You can revert an applied import later or switch payment mode on the card.
+
+## Updating after `git pull`
+
+- `npm run dev` runs the API on **http://localhost:5317** and the live web app on **http://localhost:5173**. Use **5173** while developing: it always shows the current code.
+- The page on **5317** is the *prebuilt* copy in `apps/web/dist`. On start the server compares it with the web/core sources and rebuilds it automatically when it is older (about 20 s; set `FA_NO_AUTOBUILD=1` to skip). If the rebuild fails you'll see a warning; run `npm run build` by hand.
+- So after every pull: stop the server, `git pull`, `npm install` (only if dependencies changed), start it again, and reload the page.
