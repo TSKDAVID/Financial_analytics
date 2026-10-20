@@ -165,3 +165,7 @@ On a credit card or credit line, **Card terms** lets you upload the bank's "key 
 - `npm run dev` runs the API on **http://localhost:5317** and the live web app on **http://localhost:5173**. Use **5173** while developing: it always shows the current code.
 - The page on **5317** is the *prebuilt* copy in `apps/web/dist`. On start the server compares it with the web/core sources and rebuilds it automatically when it is older (about 20 s; set `FA_NO_AUTOBUILD=1` to skip). If the rebuild fails you'll see a warning; run `npm run build` by hand.
 - So after every pull: stop the server, `git pull`, `npm install` (only if dependencies changed), start it again, and reload the page.
+
+## Android build: crash-safe startup
+
+`android/` is generated (not in git). After `npx expo prebuild`, run `npm run patch:android -w apps/mobile` (or `node apps/mobile/scripts/patch-android.cjs`) before `./gradlew assembleRelease`. It adds `CrashActivity`: if the app fails while starting (native or fatal JS error), it shows the error text with **Copy** / **Try again** instead of closing. Render errors are shown by a JS error boundary.

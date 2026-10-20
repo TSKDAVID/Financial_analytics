@@ -36,7 +36,8 @@
     "typecheck": "tsc --noEmit",
     "apk": "npx eas-cli@latest build -p android --profile preview",
     "apk:local": "node scripts/build-pdfjs.cjs && npx expo prebuild -p android && cd android && ./gradlew assembleRelease",
-    "postinstall": "node scripts/build-pdfjs.cjs"
+    "postinstall": "node scripts/build-pdfjs.cjs",
+    "patch:android": "node scripts/patch-android.cjs"
   },
   "private": true
 }
