@@ -68,7 +68,18 @@ export async function payBill(db: DB, billId: number, opts: { date?: string; amo
   const b = db.prepare('SELECT * FROM bills WHERE id = ?').get(billId) as any;
   if (!b) throw new Error('Bill not found');
   if (b.paid) return b;
-  const date = opts.date ?? todayISO();
+  const today = todayISO();
+  // overdue installments are recorded on their due date, not today
+  const date = opts.date ?? (b.due_date < today ? b.due_date : today);
+  if (b.loan_id) {
+    const l = db.prepare('SELECT tracked_from FROM loans WHERE id = ?').get(b.loan_id) as { tracked_from: string | null } | undefined;
+    if (l?.tracked_from && b.due_date < l.tracked_from) {
+      // before the loan was added to the app: history, already reflected in the imported balance — no expense
+      db.prepare('UPDATE bills SET paid = 1, paid_date = due_date, historical = 1, transaction_id = NULL WHERE id = ?').run(billId);
+      db.prepare("UPDATE alerts SET read = 1, dismissed = 1 WHERE ref_type = 'bill' AND ref_id = ?").run(billId);
+      return db.prepare('SELECT * FROM bills WHERE id = ?').get(billId);
+    }
+  }
   let category_id: number | null = null, account_id: number | null = opts.account_id ?? null;
   if (b.subscription_id) {
     const s = db.prepare('SELECT * FROM subscriptions WHERE id = ?').get(b.subscription_id) as SubRow;
@@ -86,7 +97,7 @@ export async function payBill(db: DB, billId: number, opts: { date?: string; amo
 export function unpayBill(db: DB, billId: number) {
   const b = db.prepare('SELECT * FROM bills WHERE id = ?').get(billId) as any;
   if (b?.transaction_id) db.prepare('DELETE FROM transactions WHERE id = ?').run(b.transaction_id);
-  db.prepare('UPDATE bills SET paid = 0, paid_date = NULL, transaction_id = NULL WHERE id = ?').run(billId);
+  db.prepare('UPDATE bills SET paid = 0, paid_date = NULL, transaction_id = NULL, historical = 0 WHERE id = ?').run(billId);
 }
 
 export function catId(db: DB, key: string): number | null {

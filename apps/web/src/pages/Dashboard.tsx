@@ -8,6 +8,7 @@ import { useT } from '../lib/i18n';
 import { useApi, useAction } from '../lib/hooks';
 import { post, qs } from '../lib/api';
 import { money, pct, dateFmt, monthFmt, today } from '../lib/format';
+import { MarkOverdueButton, BillCleanupNotice } from '../components/OverdueBills';
 import { Button, Card, Input, PageHeader, Spinner, Stat, Tabs, Badge, cn, Empty } from '../components/ui';
 import { NoData } from '../components/NoData';
 import { InsightList, makePeriod, shiftPeriod, type Period, type PeriodKind, axis, grid, tooltipStyle, type Insight } from '../components/shared';
@@ -38,10 +39,12 @@ export default function Dashboard() {
     <div className="space-y-6">
       <PageHeader title={t('dash.title')} subtitle={`${dateFmt(p.from)} – ${dateFmt(p.to)}`} actions={
         <div className="flex flex-wrap items-center gap-2">
+          <MarkOverdueButton />
           <Tabs<PeriodKind> value={p.kind} onChange={(k) => setP(makePeriod(k))} options={[{ value: 'month', label: t('common.month') }, { value: 'quarter', label: t('common.quarter') }, { value: 'year', label: t('common.year') }, { value: 'custom', label: t('common.custom') }]} />
           {p.kind !== 'custom' ? <div className="flex"><Button variant="outline" size="icon" onClick={() => setP(shiftPeriod(p, -1))}><ChevronLeft className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="ml-1" onClick={() => setP(shiftPeriod(p, 1))}><ChevronRight className="h-4 w-4" /></Button></div>
             : <div className="flex gap-1"><Input type="date" className="w-36 h-9" value={p.from} onChange={(e) => setP({ ...p, from: e.target.value })} /><Input type="date" className="w-36 h-9" value={p.to} onChange={(e) => setP({ ...p, to: e.target.value })} /></div>}
         </div>} />
+      <BillCleanupNotice />
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <Stat label={t('dash.netCashFlow')} value={money(x.net)} delta={x.compare.prev.netPct} deltaLabel={t('dash.vsLast')} icon={<Scale className="h-4 w-4" />} tone="#6366f1" />

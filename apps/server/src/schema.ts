@@ -104,6 +104,7 @@ export function initDb(db: DB) {
   migrateImports(db);
   migrateCredit(db);
   migrateLoans(db);
+  migrateBillTracking(db);
   migrateTerms(db);
   migrateSync(db);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
@@ -147,4 +148,41 @@ export function getSetting(db: DB, key: string): string | undefined {
 }
 export function setSetting(db: DB, key: string, value: string) {
   db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value);
+}
+
+/**
+ * v1.4: loan installments due before the loan was added to the app are history (already reflected in the
+ * imported balance): marking them paid never creates an expense. Late payments are recorded on their due date.
+ * One-time clean-up of transactions created the old way; the summary is kept in settings for the user to see.
+ */
+export function migrateBillTracking(db: DB) {
+  const lc = (db.prepare('PRAGMA table_info(loans)').all() as { name: string }[]).map((c) => c.name);
+  if (!lc.includes('tracked_from')) db.exec('ALTER TABLE loans ADD COLUMN tracked_from TEXT');
+  const bc = (db.prepare('PRAGMA table_info(bills)').all() as { name: string }[]).map((c) => c.name);
+  if (!bc.includes('historical')) db.exec('ALTER TABLE bills ADD COLUMN historical INTEGER NOT NULL DEFAULT 0');
+  db.exec(`CREATE TRIGGER IF NOT EXISTS loans_tracked_from AFTER INSERT ON loans WHEN NEW.tracked_from IS NULL
+    BEGIN UPDATE loans SET tracked_from = date('now','localtime') WHERE id = NEW.id; END;`);
+  if (getSetting(db, 'billsV14')) return;
+  const hasReports = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_reports'").get();
+  db.transaction(() => {
+    // imported loans: tracking starts on the import date; manual ones keep their start date
+    if (hasReports) db.exec(`UPDATE loans SET tracked_from = (SELECT date(created_at) FROM credit_reports r WHERE r.id = loans.import_report_id) WHERE tracked_from IS NULL AND import_report_id IS NOT NULL`);
+    db.exec('UPDATE loans SET tracked_from = start_date WHERE tracked_from IS NULL');
+    const pre = db.prepare(`SELECT b.id, b.name, b.due_date, b.amount, b.currency, b.transaction_id, t.date AS tx_date FROM bills b JOIN loans l ON l.id = b.loan_id
+      JOIN transactions t ON t.id = b.transaction_id WHERE b.paid = 1 AND b.due_date < l.tracked_from`).all() as any[];
+    for (const b of pre) {
+      db.prepare('DELETE FROM transactions WHERE id = ?').run(b.transaction_id);
+      db.prepare('UPDATE bills SET transaction_id = NULL, historical = 1, paid_date = due_date WHERE id = ?').run(b.id);
+    }
+    const late = db.prepare(`SELECT b.id, b.name, b.due_date, b.amount, b.currency, b.transaction_id, t.date AS tx_date FROM bills b JOIN transactions t ON t.id = b.transaction_id
+      WHERE b.paid = 1 AND t.date > b.due_date AND t.date = b.paid_date`).all() as any[];
+    for (const b of late) {
+      db.prepare('UPDATE transactions SET date = ? WHERE id = ?').run(b.due_date, b.transaction_id);
+      db.prepare('UPDATE bills SET paid_date = due_date WHERE id = ?').run(b.id);
+    }
+    const sum = (a: any[]) => Math.round(a.reduce((s, b) => s + b.amount, 0) * 100) / 100;
+    setSetting(db, 'billCleanup', JSON.stringify({ at: new Date().toISOString(), removed: pre.map(({ name, due_date, amount, currency, tx_date }) => ({ name, due_date, amount, currency, tx_date })), removedTotal: sum(pre),
+      redated: late.map(({ name, due_date, amount, currency, tx_date }) => ({ name, due_date, amount, currency, tx_date })), seen: pre.length + late.length === 0 }));
+    setSetting(db, 'billsV14', '1');
+  })();
 }

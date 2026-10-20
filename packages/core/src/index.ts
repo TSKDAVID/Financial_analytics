@@ -7,3 +7,5 @@ export * from './forecast';
 export * from './health';
 export * from './insights';
 export * from './categorize';
+export * from './textnorm';
+export * from './classify';

@@ -6,6 +6,7 @@ import { useT } from '../lib/i18n';
 import { useApi, useAction } from '../lib/hooks';
 import { del, post, put, qs } from '../lib/api';
 import { money, dateFmt, today, monthFmt } from '../lib/format';
+import { MarkOverdueButton } from '../components/OverdueBills';
 import { Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, Spinner, Stat, Switch, Tabs, cn, th, td } from '../components/ui';
 import { AccountSelect, CategorySelect, CurrencySelect } from '../components/pickers';
 import { IntervalPicker, useIntervalLabel } from './Recurring';
@@ -18,7 +19,7 @@ export default function Subscriptions() {
   if (!d.data) return <Spinner />;
   const items = d.data.items as any[];
   return <div className="space-y-6">
-    <PageHeader title={t('sub.title')} actions={<Button onClick={() => setEdit({ name: '', kind: 'subscription', amount: '', currency: 'GEL', unit: 'month', interval: 1, start_date: today(), category_id: null, account_id: null, provider: '', last_used: null, variable: false, active: true })}>+ {t('sub.new')}</Button>} />
+    <PageHeader title={t('sub.title')} actions={<><MarkOverdueButton /><Button onClick={() => setEdit({ name: '', kind: 'subscription', amount: '', currency: 'GEL', unit: 'month', interval: 1, start_date: today(), category_id: null, account_id: null, provider: '', last_used: null, variable: false, active: true })}>+ {t('sub.new')}</Button></>} />
     <div className="grid gap-4 sm:grid-cols-3">
       <Stat label={`${t('common.monthly')} (${t('common.all').toLowerCase()})`} value={money(d.data.totals.monthly)} icon={<CalendarClock className="h-4 w-4" />} />
       <Stat label={`${t('common.yearly')}`} value={money(d.data.totals.yearly)} tone="#f59e0b" />
@@ -82,8 +83,8 @@ function BillCalendar() {
           <div className="truncate font-medium">{b.paid ? '✓ ' : ''}{b.name}</div><div className="num">{money(b.amount, b.currency, { decimals: 0 })}</div></button>); })}</div>
     </div>)}</div>
     <div className="flex gap-4 mt-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-success/40" />{t('common.paid')}</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-warning/40" />{t('common.unpaid')}</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-danger/40" />{t('common.overdue')}</span></div>
-    {pay && <Modal open onClose={() => setPay(null)} title={`${t('sub.pay')}: ${pay.name}`} footer={<><Button variant="outline" onClick={() => setPay(null)}>{t('common.cancel')}</Button><Button onClick={() => run(() => post(`/bills/${pay.id}/pay`, { amount: Number(pay.payAmount), date: pay.payDate || today() }), t('common.paid')).then(() => setPay(null))}>{t('sub.pay')}</Button></>}>
-      <div className="grid grid-cols-2 gap-3"><Field label={t('sub.payAmount')}><Input type="number" step="0.01" value={pay.payAmount} onChange={(e) => setPay({ ...pay, payAmount: e.target.value })} /></Field><Field label={t('common.date')}><Input type="date" value={pay.payDate ?? today()} onChange={(e) => setPay({ ...pay, payDate: e.target.value })} /></Field></div>
+    {pay && <Modal open onClose={() => setPay(null)} title={`${t('sub.pay')}: ${pay.name}`} footer={<><Button variant="outline" onClick={() => setPay(null)}>{t('common.cancel')}</Button><Button onClick={() => run(() => post(`/bills/${pay.id}/pay`, { amount: Number(pay.payAmount), date: pay.payDate || (pay.due_date < today() ? pay.due_date : today()) }), t('common.paid')).then(() => setPay(null))}>{t('sub.pay')}</Button></>}>
+      <div className="grid grid-cols-2 gap-3"><Field label={t('sub.payAmount')}><Input type="number" step="0.01" value={pay.payAmount} onChange={(e) => setPay({ ...pay, payAmount: e.target.value })} /></Field><Field label={t('common.date')}><Input type="date" value={pay.payDate ?? (pay.due_date < today() ? pay.due_date : today())} onChange={(e) => setPay({ ...pay, payDate: e.target.value })} /></Field></div>
     </Modal>}
   </Card>;
 }

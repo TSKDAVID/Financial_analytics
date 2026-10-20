@@ -62,7 +62,7 @@ export function migrateSync(db: DB) {
   }
   db.exec(`DROP TRIGGER IF EXISTS settings_sync_ins; DROP TRIGGER IF EXISTS settings_sync_upd;
     CREATE TRIGGER settings_sync_ins AFTER INSERT ON settings WHEN NOT ${APPLYING} AND NEW.key NOT IN (${LOCAL_SETTINGS.map((k) => `'${k}'`).join(',')}) BEGIN
-      INSERT OR REPLACE INTO settings_meta (key, updated_at, updated_by) VALUES (NEW.key, ${NOW}, ${DEV}); END;
+      INSERT INTO settings_meta (key, updated_at, updated_by) VALUES (NEW.key, ${NOW}, ${DEV}) ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at, updated_by = excluded.updated_by; END;
     CREATE TRIGGER settings_sync_upd AFTER UPDATE ON settings WHEN NOT ${APPLYING} AND NEW.value IS NOT OLD.value AND NEW.key NOT IN (${LOCAL_SETTINGS.map((k) => `'${k}'`).join(',')}) BEGIN
-      INSERT OR REPLACE INTO settings_meta (key, updated_at, updated_by) VALUES (NEW.key, ${NOW}, ${DEV}); END;`);
+      INSERT INTO settings_meta (key, updated_at, updated_by) VALUES (NEW.key, ${NOW}, ${DEV}) ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at, updated_by = excluded.updated_by; END;`);
 }

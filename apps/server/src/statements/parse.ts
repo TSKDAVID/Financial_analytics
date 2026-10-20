@@ -1,7 +1,18 @@
 import type { Cell, Line } from './pdf';
+import { isBog, parseBog, isTbc, parseTbc } from './banks';
 
-export interface ParsedRow { date: string; description: string; amount: number; currency: string; kind: 'income' | 'expense'; raw: string; page: number }
-export interface ParseResult { bank: string; currency: string; rows: ParsedRow[]; periodFrom: string | null; periodTo: string | null; warnings: string[] }
+export interface ParsedRow {
+  date: string; description: string; amount: number; currency: string; kind: 'income' | 'expense'; raw: string; page: number;
+  /** bank's own operation type, e.g. "გადახდა", "POS wallet", "საკუთარ ანგარიშზე გადარიცხვა" */
+  opType?: string; merchant?: string; mcc?: string; card?: string; time?: string; counterparty?: string; counterpartyAccount?: string;
+  purpose?: string; provider?: string; bankCategory?: string; balance?: number; origAmount?: number; origCurrency?: string;
+}
+export interface Verification { currency: string; opening: number; closing: number; sum: number; count: number; ok: boolean; totalIn?: number; totalOut?: number }
+export interface ParseResult {
+  bank: string; currency: string; rows: ParsedRow[]; periodFrom: string | null; periodTo: string | null; warnings: string[];
+  format?: 'bog' | 'tbc' | 'generic'; holder?: string; holderLatin?: string; account?: string; verification?: Verification[];
+  dailyChecks?: number; runningChecks?: number; dailyMismatches?: number;
+}
 
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
   'იან': 1, 'თებ': 2, 'მარ': 3, 'აპრ': 4, 'მაი': 5, 'ივნ': 6, 'ივლ': 7, 'აგვ': 8, 'სექ': 9, 'ოქტ': 10, 'ნოე': 11, 'დეკ': 12 };
@@ -64,6 +75,8 @@ function findColumns(lines: Line[]): Columns | null {
 }
 
 export function parseStatement(lines: Line[]): ParseResult {
+  if (isBog(lines)) return parseBog(lines);
+  if (isTbc(lines)) return parseTbc(lines);
   const full = lines.map((l) => l.text).join('\n');
   const bank = detectBank(full);
   const curCounts = new Map<string, number>();
@@ -113,5 +126,5 @@ export function parseStatement(lines: Line[]): ParseResult {
   }
   if (!rows.length) warnings.push('No transactions recognised. The layout may be unusual — try the CSV/Excel export from your bank.');
   const dates = rows.map((r) => r.date).sort();
-  return { bank, currency, rows, periodFrom: dates[0] ?? null, periodTo: dates[dates.length - 1] ?? null, warnings };
+  return { bank, format: 'generic', currency, rows, periodFrom: dates[0] ?? null, periodTo: dates[dates.length - 1] ?? null, warnings };
 }

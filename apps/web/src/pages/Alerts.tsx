@@ -5,6 +5,7 @@ import { useT } from '../lib/i18n';
 import { useApi, useAction } from '../lib/hooks';
 import { post } from '../lib/api';
 import { dateFmt } from '../lib/format';
+import { MarkOverdueButton } from '../components/OverdueBills';
 import { Badge, Button, Card, Empty, PageHeader, Spinner, Tabs, cn } from '../components/ui';
 import { sevIcon, sevColor } from '../components/shared';
 
@@ -20,6 +21,7 @@ export default function Alerts() {
   if (!d.data) return <Spinner />;
   return <div className="space-y-4">
     <PageHeader title={t('alerts.title')} subtitle={`${d.data.unread} unread`} actions={<>
+      <MarkOverdueButton />
       {perm === 'default' && <Button variant="outline" onClick={() => Notification.requestPermission().then(() => location.reload())}><BellRing className="h-4 w-4" />{t('alerts.enableDesktop')}</Button>}
       <Button variant="outline" loading={busy} onClick={() => run(() => post('/alerts/evaluate'), '✓')}><RefreshCw className="h-4 w-4" />{t('alerts.check')}</Button>
       <Button variant="outline" onClick={() => run(() => post('/alerts/read-all'))}><Check className="h-4 w-4" />{t('alerts.readAll')}</Button></>} />

@@ -273,6 +273,17 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   });
   app.get('/api/bills/upcoming', async () => db.prepare("SELECT b.*, CASE WHEN b.loan_id IS NOT NULL THEN 'loan' ELSE s.kind END AS type FROM bills b LEFT JOIN subscriptions s ON s.id = b.subscription_id WHERE b.paid = 0 AND b.due_date <= ? ORDER BY b.due_date LIMIT 50").all(addMonths(todayISO(), 1)).map(withGel));
   app.post('/api/bills/:id/pay', async (req) => { const body = parse(z.object({ date: date.optional(), amount: money.positive().optional(), account_id: optId }).default({}), req.body ?? {}); return payBill(db, parse(id, P(req).id), body); });
+  app.get('/api/bills/overdue', async () => db.prepare(`SELECT b.*, CASE WHEN b.loan_id IS NOT NULL THEN 'loan' ELSE s.kind END AS type, CASE WHEN l.tracked_from IS NOT NULL AND b.due_date < l.tracked_from THEN 1 ELSE 0 END AS pre_tracking
+    FROM bills b LEFT JOIN subscriptions s ON s.id = b.subscription_id LEFT JOIN loans l ON l.id = b.loan_id WHERE b.paid = 0 AND b.due_date < ? ORDER BY b.due_date, b.name`).all(todayISO()).map(withGel));
+  app.post('/api/bills/pay-overdue', async (req) => {
+    const { ids } = parse(z.object({ ids: z.array(id).min(1).max(500) }), req.body);
+    const out = [] as any[];
+    for (const bid of ids) { const b = db.prepare('SELECT due_date, paid FROM bills WHERE id = ?').get(bid) as any; if (b && !b.paid && b.due_date < todayISO()) out.push(await payBill(db, bid)); }
+    return { paid: out.length, ids: out.map((b) => b.id), historical: out.filter((b) => b.historical).length };
+  });
+  app.post('/api/bills/unpay-many', async (req) => { const { ids } = parse(z.object({ ids: z.array(id).min(1).max(500) }), req.body); for (const bid of ids) unpayBill(db, bid); return { ok: true, count: ids.length }; });
+  app.get('/api/maintenance/bill-cleanup', async () => JSON.parse(getSetting(db, 'billCleanup') ?? 'null'));
+  app.post('/api/maintenance/bill-cleanup/seen', async () => { const v = JSON.parse(getSetting(db, 'billCleanup') ?? 'null'); if (v) setSetting(db, 'billCleanup', JSON.stringify({ ...v, seen: true })); return { ok: true }; });
   app.post('/api/bills/:id/unpay', async (req) => { unpayBill(db, parse(id, P(req).id)); return { ok: true }; });
   app.get('/api/utilities', async () => utilitiesData(db));
 
