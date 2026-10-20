@@ -11,7 +11,7 @@ function phone() {
   const conv = (p: any) => (Array.isArray(p) ? p : Object.fromEntries(Object.entries(p).map(([k, v]) => [k.slice(1), v])));
   const raw = { getFirstSync: (s: string, p: any) => b.prepare(s).get(conv(p)) ?? null, getAllSync: (s: string, p: any) => b.prepare(s).all(conv(p)),
     runSync: (s: string, p: any) => { const r = b.prepare(s).run(conv(p)); return { changes: r.changes, lastInsertRowId: Number(r.lastInsertRowid) }; }, execSync: (s: string) => b.exec(s), closeSync: () => b.close() };
-  const db = initDb(wrap(raw));
+  const db = initDb(wrap(raw as any));
   const app = new LocalApp(); registerRoutes(app as any, db, () => 0);
   return { db, call: (m: string, u: string, body?: unknown) => app.inject(m, '/api' + u, body) };
 }

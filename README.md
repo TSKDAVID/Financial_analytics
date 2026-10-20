@@ -145,3 +145,7 @@ Go to **Statement import → Credit report (Creditinfo)** and upload the "ჩე
 - **Credit cards and overdrafts** are revolving lines. By default they are modelled as the current balance paid down over 12 months; edit the term or rate to match your plan.
 - **AI fallback:** if a field can't be parsed, the local model (Ollama or an OpenAI-compatible server) is asked to read only that contract's section. A cloud provider is never used for credit reports.
 - The **Risk** page shows your latest Creditinfo score, rating and debt totals.
+
+## Card / loan key-terms import
+
+On a credit card or credit line, **Card terms** lets you upload the bank's "key terms" PDF (Liberty Bank Top Card is supported first). The PDF is parsed locally. It reads the limit, the rate type, the annual and effective rates for the recommended payment and for the minimum payment, the minimum payment, the cash-out fee, the late fees and the contract end date. On cards with two rates, you choose which payment you usually make, and the matching rate is used. You see every change before it is applied. Nothing changes until you approve. You can revert an applied import later or switch payment mode on the card.

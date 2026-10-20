@@ -15,6 +15,7 @@ import * as sec from './security';
 import { seedDemo, resetData } from './seed';
 import { AI_DEFAULTS, SECRET_KEYS } from './statements/ai';
 import { importRoutes } from './statements/routes';
+import { termsRoutes } from './terms/routes';
 import { creditRoutes } from './credit/routes';
 import { syncRoutes } from './sync/routes';
 
@@ -340,6 +341,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   void b; void amortize;
   importRoutes(app, db);
   creditRoutes(app, db);
+  termsRoutes(app, db);
   syncRoutes(app, db);
 }
 

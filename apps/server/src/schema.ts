@@ -2,6 +2,7 @@
 import { migrateImports } from './statements/service';
 import { migrateCredit } from './credit/service';
 import { migrateSync } from './sync/track';
+import { migrateTerms } from './terms/service';
 
 export interface Stmt {
   get(...params: any[]): unknown; all(...params: any[]): unknown[];
@@ -103,6 +104,7 @@ export function initDb(db: DB) {
   migrateImports(db);
   migrateCredit(db);
   migrateLoans(db);
+  migrateTerms(db);
   migrateSync(db);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
   if (!getSetting(db, 'minBalanceMigrated')) { if (getSetting(db, 'minBalance') === '300') setSetting(db, 'minBalance', ''); setSetting(db, 'minBalanceMigrated', '1'); }

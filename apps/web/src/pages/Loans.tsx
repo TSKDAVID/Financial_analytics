@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Landmark, Pencil, Calculator, TableProperties, CreditCard, RefreshCw, AlertTriangle, Undo2 } from 'lucide-react';
+import { Landmark, Pencil, Calculator, TableProperties, CreditCard, RefreshCw, AlertTriangle, Undo2, FileText } from 'lucide-react';
 import { monthlyPayment, termForPayment, addMonths } from '@fa/core';
 import { Bar, BarChart, CartesianGrid, Line, ComposedChart, Area, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell, PieChart, Pie } from 'recharts';
 import { useT } from '../lib/i18n';
@@ -13,7 +13,7 @@ import { axis, grid, tooltipStyle, CHART_COLORS } from '../components/shared';
 export default function Loans() {
   const t = useT();
   const loans = useApi<any[]>('/loans'); const ov = useApi<any>('/loans/overview');
-  const [edit, setEdit] = useState<any>(null); const [upd, setUpd] = useState<any>(null); const [sched, setSched] = useState<any>(null); const [calc, setCalc] = useState(false);
+  const [edit, setEdit] = useState<any>(null); const [upd, setUpd] = useState<any>(null); const [sched, setSched] = useState<any>(null); const [calc, setCalc] = useState(false); const [terms, setTerms] = useState<any>(null);
   if (!loans.data || !ov.data) return <Spinner />;
   return <div className="space-y-6">
     <PageHeader title={t('loan.title')} actions={<><Button variant="outline" onClick={() => setCalc(true)}><Calculator className="h-4 w-4" />{t('loan.calculator')}</Button><Button onClick={() => setEdit({ kind: 'loan', monthly_payment: null, name: '', bank: '', principal: '', currency: 'GEL', annual_rate: '', term_months: 24, start_date: today(), extra_monthly: 0, account_id: null, active: true })}>+ {t('loan.new')}</Button></>} />
@@ -28,9 +28,10 @@ export default function Loans() {
         <tbody>{ov.data.byBank.map((b: any, i: number) => <tr key={b.bank} className="border-t"><td className={td}><span className="inline-block h-2.5 w-2.5 rounded-full mr-2" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />{b.bank} <span className="text-muted-foreground text-xs">×{b.count}</span></td><td className={cn(td, 'text-right num')}>{money(b.remaining_gel)}</td><td className={cn(td, 'text-right num')}>{money(b.monthly_gel)}</td></tr>)}</tbody></table>
     </div></Card>}
     {!loans.data.length ? <Card><Empty icon={<Landmark className="h-6 w-6" />} title={t('common.empty')} /></Card> :
-      <div className="grid gap-4 lg:grid-cols-2">{loans.data.map((l) => <LoanCard key={l.id} l={l} onEdit={() => setEdit({ ...l, active: !!l.active })} onUpdate={() => setUpd(l)} onSchedule={() => setSched(l)} />)}</div>}
+      <div className="grid gap-4 lg:grid-cols-2">{loans.data.map((l) => <LoanCard key={l.id} l={l} onEdit={() => setEdit({ ...l, active: !!l.active })} onUpdate={() => setUpd(l)} onSchedule={() => setSched(l)} onTerms={() => setTerms(l)} />)}</div>}
     {edit && <LoanDialog loan={edit} onClose={() => setEdit(null)} />}
     {upd && <UpdateDialog loan={upd} onClose={() => setUpd(null)} />}
+    {terms && <TermsDialog loan={terms} onClose={() => setTerms(null)} />}
     {sched && <ScheduleDialog loan={sched} onClose={() => setSched(null)} />}
     {calc && <CalcDialog onClose={() => setCalc(false)} />}
   </div>;
@@ -40,8 +41,8 @@ const REVOLVING = ['credit_card', 'overdraft', 'credit_line'];
 const KINDS = ['loan', 'mortgage', 'installment', 'credit_card', 'overdraft', 'credit_line', 'other'];
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
-function LoanCard({ l, onEdit, onUpdate, onSchedule }: { l: any; onEdit: () => void; onUpdate: () => void; onSchedule: () => void }) {
-  const t = useT();
+function LoanCard({ l, onEdit, onUpdate, onSchedule, onTerms }: { l: any; onEdit: () => void; onUpdate: () => void; onSchedule: () => void; onTerms: () => void }) {
+  const t = useT(); const { run } = useAction();
   const progress = l.paid_count / Math.max(1, l.paid_count + l.months_left);
   const Icon = l.revolving ? CreditCard : Landmark;
   const sub = l.revolving
@@ -61,7 +62,9 @@ function LoanCard({ l, onEdit, onUpdate, onSchedule }: { l: any; onEdit: () => v
     {l.revolving && l.credit_limit ? <div className="mt-4"><Progress value={l.utilization ?? 0} /><div className="flex justify-between text-[11px] text-muted-foreground mt-1"><span>{t('lx.utilization')} {pct(l.utilization ?? 0)} · {t('lx.limit')} {money(l.credit_limit, l.currency)}</span><span>{money(l.available ?? 0, l.currency)} {t('lx.available')}</span></div></div>
       : !l.revolving && <div className="mt-4"><Progress value={progress} tone="hsl(var(--success))" /><div className="flex justify-between text-[11px] text-muted-foreground mt-1"><span>{t('loan.paidOf', { paid: l.paid_count, total: l.paid_count + l.months_left })}</span><span>{pct(progress)}</span></div></div>}
     {l.next_payment && <div className="mt-3 text-xs flex items-center gap-2 flex-wrap"><Badge tone="warning">{t('common.next')}: {dateFmt(l.next_payment.date)}</Badge><span className="text-muted-foreground num">{t('loan.interest')} {money(l.next_payment.interest, l.currency)} · {t('loan.principalPart')} {money(l.next_payment.principal, l.currency)}</span></div>}
-    <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={onUpdate}><RefreshCw className="h-4 w-4" />{t('lx.update')}</Button>{!l.needs_input && <Button size="sm" variant="outline" onClick={onSchedule}><TableProperties className="h-4 w-4" />{t('loan.schedule')}</Button>}</div>
+    <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={onUpdate}><RefreshCw className="h-4 w-4" />{t('lx.update')}</Button>{!l.needs_input && <Button size="sm" variant="outline" onClick={onSchedule}><TableProperties className="h-4 w-4" />{t('loan.schedule')}</Button>}{l.revolving && <Button size="sm" variant="ghost" onClick={onTerms}><FileText className="h-4 w-4" />{t('lt.import')}</Button>}</div>
+    {l.pay_mode && l.rate_alt != null && <div className="mt-3 text-xs flex items-center gap-2 flex-wrap text-muted-foreground"><span>{t('lt.iPay')}:</span>
+      {(['recommended', 'minimum'] as const).map((m) => <Button key={m} size="sm" variant={l.pay_mode === m ? 'primary' : 'outline'} onClick={() => l.pay_mode !== m && run(() => post(`/loans/${l.id}/pay-mode`, { mode: m }))}>{t(`lt.${m}`)} · {m === l.pay_mode ? l.annual_rate : l.rate_alt}%</Button>)}</div>}
   </Card>;
 }
 
@@ -206,3 +209,43 @@ function CalcDialog({ onClose }: { onClose: () => void }) {
   </Modal>;
 }
 void BarChart; void Line;
+
+const toB64 = (f: File) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f); });
+/** Card/loan key-terms import: upload → review (choose recommended vs minimum payment) → approve. Nothing changes before approval. */
+function TermsDialog({ loan, onClose }: { loan: any; onClose: () => void }) {
+  const t = useT(); const { run, busy } = useAction();
+  const hist = useApi<any[]>(`/loans/${loan.id}/terms`);
+  const [id, setId] = useState<number | null>(null); const [mode, setMode] = useState<'recommended' | 'minimum'>(loan.pay_mode ?? 'minimum');
+  const [pv, setPv] = useState<any>(null);
+  useEffect(() => { if (id) get<any>(`/loan-terms/${id}?mode=${mode}`).then(setPv); }, [id, mode]);
+  const upload = async (f?: File) => { if (!f) return; const r = await run(async () => post<{ id: number }>(`/loans/${loan.id}/terms`, { filename: f.name, data: await toB64(f) })); if (r) setId(r.id); };
+  const tm = pv?.terms;
+  const approve = async () => { if (await run(() => post(`/loan-terms/${id}/approve`, { mode }), t('lt.applied'))) onClose(); };
+  const discard = async () => { await run(() => post(`/loan-terms/${id}/discard`)); onClose(); };
+  return <Modal open onClose={onClose} title={`${t('lt.title')} · ${loan.name}`} footer={id ? <><Button variant="outline" onClick={discard}>{t('lt.discard')}</Button><Button onClick={approve} loading={busy}>{t('lt.approve')}</Button></> : <Button variant="outline" onClick={onClose}>{t('common.close')}</Button>}>
+    {!id && <div className="space-y-3"><p className="text-sm text-muted-foreground">{t('lt.hint')}</p><Input type="file" accept="application/pdf" onChange={(e) => upload(e.target.files?.[0])} />{busy && <Spinner />}
+      {(hist.data ?? []).filter((h) => h.status === 'applied').map((h) => <div key={h.id} className="flex items-center justify-between text-sm border rounded-lg p-2"><span>{h.filename} · {dateFmt(h.applied_at)} · {t(`lt.${h.pay_mode}`)}</span><Button size="sm" variant="ghost" onClick={() => run(() => post(`/loan-terms/${h.id}/revert`), t('lt.reverted'))}><Undo2 className="h-4 w-4" />{t('lt.revert')}</Button></div>)}</div>}
+    {id && !tm && <Spinner />}
+    {tm && <div className="space-y-4 text-sm">
+      <div className="text-muted-foreground">{[tm.bank, tm.product, tm.currency].filter(Boolean).join(' · ')}</div>
+      <div className="grid grid-cols-2 gap-2">
+        {tm.creditLimit != null && <Stat label={t('lx.limit')} value={money(tm.creditLimit, tm.currency)} />}
+        {tm.rateType && <Stat label={t('lt.rateType')} value={t(`lt.${tm.rateType}`)} />}
+        {tm.cashFeePct != null && <Stat label={t('lt.cashFee')} value={`${tm.cashFeePct}%${tm.cashFeeMin ? `, min ${money(tm.cashFeeMin, tm.currency)}` : ''}`} />}
+        {tm.contractEnd && <Stat label={t('lt.end')} value={dateFmt(tm.contractEnd)} />}
+        {(tm.lateFeeOnce != null || tm.lateFeeDailyPct != null) && <Stat label={t('lt.late')} value={[tm.lateFeeOnce != null && money(tm.lateFeeOnce, tm.currency), tm.lateFeeDailyPct != null && `${tm.lateFeeDailyPct}%/${t('lt.day')}`].filter(Boolean).join(' + ')} />}
+      </div>
+      <div><div className="font-medium mb-2">{t('lt.whichPay')}</div><div className="grid grid-cols-2 gap-2">
+        {(['recommended', 'minimum'] as const).map((m) => { const r = m === 'minimum' ? tm.rateMinimum : tm.rateRecommended; const ef = m === 'minimum' ? tm.effectiveMinimum : tm.effectiveRecommended;
+          return <button key={m} type="button" onClick={() => setMode(m)} className={cn('rounded-xl border p-3 text-left', mode === m && 'ring-2 ring-primary border-primary')}>
+            <div className="font-medium">{t(`lt.${m}`)}</div><div className="text-lg font-semibold num">{r ?? '—'}%</div>
+            {ef != null && <div className="text-xs text-muted-foreground">{t('lt.effective')} {ef}%</div>}
+            {m === 'minimum' && tm.minPayment != null && <div className="text-xs">{money(tm.minPayment, tm.currency)} / {t('unit.month')}</div>}
+            {m === 'recommended' && <div className="text-xs text-muted-foreground">{t('lt.recHint')}</div>}</button>; })}
+      </div></div>
+      {(tm.warnings ?? []).length > 0 && <div className="rounded-lg bg-warning/10 p-2 text-xs">{tm.warnings.join(' · ')}</div>}
+      <div><div className="font-medium mb-1">{t('lt.changes')}</div>{pv.diff.length === 0 ? <div className="text-muted-foreground">{t('lt.noChanges')}</div> :
+        <table className="w-full text-xs"><tbody>{pv.diff.map((d: any) => <tr key={d.field} className="border-t"><td className="py-1">{d.field}</td><td className="text-muted-foreground line-through">{String(d.from ?? '—')}</td><td className="font-medium">{String(d.to ?? '—')}</td></tr>)}</tbody></table>}</div>
+    </div>}
+  </Modal>;
+}
