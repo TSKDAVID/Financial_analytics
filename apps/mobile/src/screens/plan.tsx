@@ -5,6 +5,7 @@ import { Donut, LineChart } from '../charts';
 import { act, del, money, pct, post, put, useQ, dateFmt, monthFmt, todayISO, CHART_COLORS } from '../lapi';
 import { AccountPick, CategoryPick, CurrencyPick, NoData, UNITS, num, type ScreenProps } from './common';
 import { InsightRow } from './money';
+import { OverdueButton, BillCleanupNotice } from './extra';
 
 const REVOLVING = ['credit_card', 'overdraft', 'credit_line'];
 const KINDS = [{ value: 'loan', label: 'Loan' }, { value: 'mortgage', label: 'Mortgage' }, { value: 'installment', label: 'Installment' }, { value: 'credit_card', label: 'Credit card' }, { value: 'overdraft', label: 'Overdraft' }, { value: 'credit_line', label: 'Credit line' }];
@@ -38,6 +39,7 @@ export function Loans({ nav }: ScreenProps) {
           <Btn small kind={x.needs_input ? 'primary' : 'outline'} title={x.needs_input ? 'Enter payment' : 'Update'} onPress={() => setUpd(x)} />
           <Btn small kind="outline" title="Edit" onPress={() => setEdit({ ...x, principal: String(x.principal), annual_rate: String(x.annual_rate), term_months: String(x.term_months || ''), monthly_payment: x.monthly_payment_override ? String(x.monthly_payment_override) : x.needs_input ? '' : String(x.monthly_payment), extra_monthly: String(x.extra_monthly ?? 0), monthly_fee: String(x.monthly_fee ?? 0), credit_limit: x.credit_limit != null ? String(x.credit_limit) : '', due_day: x.due_day != null ? String(x.due_day) : '', payment_pct: x.payment_pct != null ? String(x.payment_pct) : '', pin: x.monthly_payment_override ? 'payment' : 'term', active: !!x.active })} />
           {!x.needs_input && <Btn small kind="ghost" title="Schedule" onPress={() => nav.push('schedule', { loan: x })} />}
+          {x.revolving && <Btn small kind="ghost" title="Card terms" onPress={() => nav.push('cardTerms', { loan: x })} />}
         </View>
       </Card>; })}
     {edit && <LoanSheet loan={edit} onClose={() => setEdit(null)} />}
@@ -124,6 +126,7 @@ export function Subscriptions({ nav }: ScreenProps) {
   const b = useQ<any[]>(`/bills?from=${from.toISOString().slice(0, 10)}&to=${to}`);
   const [edit, setEdit] = useState<any>(null);
   return <Screen title="Bills & subscriptions" back={nav.back} fab={{ label: 'Add', onPress: () => setEdit({ name: '', kind: 'subscription', amount: '', currency: 'GEL', unit: 'month', interval: '1', start_date: todayISO(), category_id: null, account_id: null, provider: '', variable: false, active: true }) }}>
+    <BillCleanupNotice /><OverdueButton />
     <Seg value={tab} onChange={setTab} options={[{ value: 'bills', label: 'Bill calendar' }, { value: 'subs', label: 'Subscriptions' }]} />
     {s.data && <View style={{ flexDirection: 'row', gap: 10 }}><Stat label="Per month" value={money(s.data.totals.monthly)} /><Stat label="Per year" value={money(s.data.totals.yearly)} /></View>}
     {tab === 'bills' ? <Card>{!b.data ? <Loading /> : !b.data.length ? <Empty icon="🧾" title="No bills in this period" /> : b.data.map((x, i) => {
@@ -242,6 +245,7 @@ export function Risk({ nav }: ScreenProps) {
 export function Alerts({ nav }: ScreenProps) {
   const c = useColors(); const a = useQ<any>('/alerts');
   return <Screen title="Alerts" back={nav.back} onRefresh={a.reload} actions={<Btn small kind="ghost" title="Read all" onPress={() => act(() => post('/alerts/read-all'))} />}>
+    <OverdueButton />
     {!a.data ? <Loading /> : !a.data.items.length ? <Card><Empty icon="🔔" title="No alerts" body="You’ll be notified about bills, budgets, low balance and unusual spending." /></Card> : a.data.items.map((x: any) => {
       const col = x.severity === 'danger' ? c.danger : x.severity === 'warning' ? c.warning : c.primary;
       return <Card key={x.id} style={[{ borderLeftWidth: 4, borderLeftColor: col }, x.read && { opacity: 0.65 }] as any} onPress={() => !x.read && act(() => post(`/alerts/${x.id}/read`))}>

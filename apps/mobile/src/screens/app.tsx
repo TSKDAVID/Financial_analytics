@@ -9,6 +9,7 @@ import { Badge, Btn, Card, Chip, Empty, H2, Input, Loading, NumInput, Pick, Row,
 import { act, api, del, money, post, put, useQ, dateFmt, invalidate } from '../lapi';
 import { AccountPick, CategoryPick, NoData, type ScreenProps, type Nav } from './common';
 import { loadConn, pair, saveConn, type Conn } from '../api';
+import { KIND_LABEL } from './extra';
 import { checkSync, approveSync, history, undo, pollOutbox, type Pending } from '../sync';
 
 async function pickPdf(): Promise<{ name: string; data: string } | null> {
@@ -33,7 +34,7 @@ export function ImportScreen({ nav, params }: ScreenProps) {
   return <Screen title="Import" back={nav.back}>
     <Seg value={tab} onChange={setTab} options={[{ value: 'st', label: 'Bank statement' }, { value: 'credit', label: 'Credit report' }]} />
     <Card style={{ gap: 12 }}>
-      <T muted>{tab === 'st' ? 'PDF statements from Bank of Georgia, TBC and Liberty. Nothing is added until you review and approve. Everything is processed on this phone.' : 'Your “My Creditinfo” PDF. Loans are proposed for review — nothing changes until you approve. Personal details are never stored.'}</T>
+      <T muted>{tab === 'st' ? 'PDF statements from Bank of Georgia, TBC and Liberty. Each row gets a kind (purchase, own transfer / ყულაბა, sent to person, …) and category; transfers between your banks are matched. Nothing is added until you approve. Everything is processed on this phone.' : 'Your “My Creditinfo” PDF. Loans are proposed for review — nothing changes until you approve. Personal details are never stored.'}</T>
       {tab === 'st' && <AccountPick value={account} onChange={setAccount} label="Into account (optional)" />}
       <Btn icon="📄" title={busy ? 'Reading PDF…' : 'Choose PDF'} loading={busy} onPress={upload} />
     </Card>
@@ -42,29 +43,34 @@ export function ImportScreen({ nav, params }: ScreenProps) {
       : (!(crs.data ?? []).length ? <Empty icon="🗂" title="No reports yet" /> : (crs.data ?? []).map((r, i) => <View key={r.id}>{i > 0 && <Sep />}<Row title={r.filename} sub={`score ${r.score ?? '—'} ${r.rating ?? ''} · ${dateFmt(r.report_date)}`} right={<Badge label={r.status} tone={r.status === 'approved' ? 'success' : 'warning'} />} onPress={() => nav.push('creditReport', { id: r.id })} /></View>))}</Card>
   </Screen>;
 }
+const INTERNAL = ['internal', 'exchange', 'loan_disbursement', 'cash_deposit'];
 export function BatchScreen({ nav, params }: ScreenProps) {
-  const c = useColors(); const b = useQ<any>(`/imports/${params.id}`); const [edit, setEdit] = useState<any>(null); const [filter, setFilter] = useState<'all' | 'low' | 'dup'>('all');
+  const c = useColors(); const b = useQ<any>(`/imports/${params.id}`); const [edit, setEdit] = useState<any>(null); const [filter, setFilter] = useState<'all' | 'low' | 'internal' | 'dup'>('all');
   if (!b.data) return <Screen title="Import" back={nav.back}><Loading /></Screen>;
   const x = b.data; const done = x.status === 'approved'; const closed = x.status === 'discarded' || x.status === 'reverted';
-  const rows = (x.rows as any[]).filter((r) => filter === 'all' || (filter === 'low' ? r.confidence < 0.6 && !r.excluded : r.duplicate_of));
+  const rows = (x.rows as any[]).filter((r) => filter === 'all' || (filter === 'low' ? r.confidence < 0.6 && !r.excluded : filter === 'internal' ? INTERNAL.includes(r.tx_kind) || r.match_id : r.duplicate_of));
   return <Screen title={x.filename} back={nav.back}>
     <View style={{ flexDirection: 'row', gap: 10 }}><Stat label="Income" value={money(x.stats.income)} tone={c.success} /><Stat label="Expenses" value={money(x.stats.expense)} tone={c.danger} /></View>
     <T muted style={{ fontSize: 12 }}>{x.stats.included}/{x.stats.total} included · {x.stats.duplicates} possible duplicates · {x.stats.low} need review</T>
+    {x.verification && <T style={{ fontSize: 12, color: x.verification.totals.every((v: any) => v.ok) && !x.verification.mismatches ? c.success : c.warning }}>{x.verification.totals.every((v: any) => v.ok) && !x.verification.mismatches ? '✓ Balances verified' : '⚠ Balances do not reconcile'} · {x.verification.totals.map((v: any) => `${v.currency} ${v.count}`).join(' · ')}</T>}
     {(x.warnings ?? []).map((w: string, i: number) => <T key={i} style={{ color: c.warning, fontSize: 12 }}>⚠ {w}</T>)}
+    <Btn kind="soft" icon="⇄" title="Smart groups: transfers, people, recurring" onPress={() => nav.push('importGroups', { id: x.id, locked: closed })} />
     <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
       {!done && !closed && <><Btn title="Approve" onPress={() => Alert.alert('Approve import?', `${x.stats.included} transactions will be added.`, [{ text: 'Cancel' }, { text: 'Approve', onPress: () => act(() => post(`/imports/${x.id}/approve`, {}), 'Imported') }])} />
         <Btn kind="outline" title="Ask AI" onPress={() => act(() => post(`/imports/${x.id}/ai`), 'AI suggestions applied')} /><Btn kind="ghost" title="Discard" onPress={() => act(() => post(`/imports/${x.id}/discard`)).then(nav.back)} /></>}
       {done && <Btn kind="danger" title="Revert import" onPress={() => Alert.alert('Revert?', 'Removes the transactions this import added.', [{ text: 'Cancel' }, { text: 'Revert', style: 'destructive', onPress: () => act(() => post(`/imports/${x.id}/revert`), 'Reverted') }])} />}
     </View>
-    <View style={{ flexDirection: 'row' }}>{[['all', 'All'], ['low', 'Needs review'], ['dup', 'Duplicates']].map(([k, l]) => <Chip key={k} label={l} active={filter === k} onPress={() => setFilter(k as any)} />)}</View>
+    <View style={{ flexDirection: 'row' }}>{[['all', 'All'], ['low', 'Needs review'], ['internal', 'Internal'], ['dup', 'Duplicates']].map(([k, l]) => <Chip key={k} label={l} active={filter === k} onPress={() => setFilter(k as any)} />)}</View>
     <Card>{rows.map((r, i) => <View key={r.id} style={r.excluded ? { opacity: 0.45 } : undefined}>{i > 0 && <Sep />}
-      <Row title={r.description} sub={`${dateFmt(r.date)} · ${r.category_name ?? 'Uncategorized'}${r.confidence < 0.6 ? ' · low confidence' : ''}${r.duplicate_of ? ' · duplicate?' : ''}`}
+      <Row title={r.description} sub={`${dateFmt(r.date)} · ${KIND_LABEL[r.tx_kind] ?? ''}${INTERNAL.includes(r.tx_kind) ? '' : ' · ' + (r.category_name ?? 'Uncategorized')} · ${Math.round(r.confidence * 100)}%${r.match_id ? ` · ⇄ ${r.match_status}` : ''}${r.duplicate_of ? ' · duplicate?' : ''}${r.why ? `\n${r.why}` : ''}`}
         right={<Text style={{ fontWeight: '700', color: r.kind === 'income' ? c.success : c.text }}>{r.kind === 'income' ? '+' : '−'}{money(r.amount, r.currency)}</Text>} dot={r.category_color ?? (r.confidence < 0.6 ? c.warning : c.muted)}
         onPress={() => !done && !closed && setEdit(r)} /></View>)}</Card>
     {edit && <Sheet open title={edit.description} onClose={() => setEdit(null)} footer={<><Btn kind="outline" title={edit.excluded ? 'Include' : 'Exclude'} onPress={async () => { await act(() => put(`/imports/rows/${edit.id}`, { excluded: !edit.excluded })); setEdit(null); }} />
-      <Btn title="Save" style={{ flex: 1 }} onPress={async () => { await act(() => put(`/imports/rows/${edit.id}`, { category_id: edit.category_id, kind: edit.kind }), 'Saved — merchant learned'); setEdit(null); }} /></>}>
+      <Btn title="Save" style={{ flex: 1 }} onPress={async () => { await act(() => put(`/imports/rows/${edit.id}`, { category_id: edit.category_id, kind: edit.kind, tx_kind: edit.tx_kind ?? undefined }), 'Saved — merchant learned'); setEdit(null); }} /></>}>
       <Seg value={edit.kind} onChange={(k) => setEdit({ ...edit, kind: k })} options={[{ value: 'expense', label: 'Expense' }, { value: 'income', label: 'Income' }]} />
-      <CategoryPick value={edit.category_id} onChange={(v) => setEdit({ ...edit, category_id: v })} kind={edit.kind} />
+      <Pick label="Kind" value={edit.tx_kind ?? 'purchase'} options={Object.entries(KIND_LABEL).map(([value, label]) => ({ value, label }))} onChange={(v) => setEdit({ ...edit, tx_kind: v })} />
+      {edit.why && <T muted style={{ fontSize: 12 }}>Why: {edit.why}</T>}
+      {!INTERNAL.includes(edit.tx_kind) && <CategoryPick value={edit.category_id} onChange={(v) => setEdit({ ...edit, category_id: v })} kind={edit.kind} />}
     </Sheet>}
   </Screen>;
 }
@@ -181,7 +187,7 @@ export function SettingsScreen({ nav }: ScreenProps) {
 const ITEMS = [
   ['accounts', '🏦', 'Accounts'], ['categories', '🏷', 'Categories'], ['recurring', '🔁', 'Recurring'], ['loans', '💳', 'Loans & cards'],
   ['subscriptions', '🧾', 'Bills & subs'], ['budgets', '🎯', 'Budgets & goals'], ['forecast', '📈', 'Forecast'], ['insights', '💡', 'Insights'],
-  ['risk', '🛡', 'Risk'], ['reports', '📊', 'Reports'], ['import', '📄', 'Import'], ['sync', '🔄', 'Sync'], ['settings', '⚙️', 'Settings'],
+  ['risk', '🛡', 'Risk'], ['reports', '📊', 'Reports'], ['import', '📄', 'Import'], ['people', '👥', 'People'], ['sync', '🔄', 'Sync'], ['settings', '⚙️', 'Settings'],
 ] as const;
 export function More({ nav }: { nav: Nav }) {
   const c = useColors();

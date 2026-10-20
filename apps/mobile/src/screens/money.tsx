@@ -3,6 +3,7 @@ import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { Badge, Bar, Btn, Card, Chip, Empty, H2, Input, Loading, NumInput, Pick, Row, Screen, Seg, Sep, Sheet, Stat, T, Toggle, useColors } from '../ui';
 import { Bars, Donut, LineChart } from '../charts';
 import { act, del, money, pct, post, put, useQ, dateFmt, monthFmt, todayISO, CHART_COLORS } from '../lapi';
+import { OverdueButton, BillCleanupNotice } from './extra';
 import { AccountPick, CategoryPick, CurrencyPick, NoData, UNITS, num, type ScreenProps } from './common';
 
 // ---------- Dashboard ----------
@@ -16,6 +17,7 @@ export function Dashboard({ nav }: ScreenProps) {
       <Text style={{ color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 2 }}>{money(x.netWorth)}</Text>
       <View style={{ flexDirection: 'row', marginTop: 10, gap: 16 }}><Text style={{ color: '#ffffffcc', fontSize: 12 }}>Assets {money(x.totalAssets, 'GEL', true)}</Text><Text style={{ color: '#ffffffcc', fontSize: 12 }}>Debt {money(x.totalDebt, 'GEL', true)}</Text></View>
     </Card>
+    <BillCleanupNotice /><OverdueButton />
     <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
       <Stat label="Income (month)" value={money(x.income)} tone={c.success} /><Stat label="Expenses (month)" value={money(x.expense)} tone={c.danger} />
     </View>
