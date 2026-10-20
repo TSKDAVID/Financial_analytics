@@ -33,7 +33,7 @@ export async function buildApp(db: DB, opts: { logger?: boolean; port?: number }
   registerRoutes(app, db, () => port);
   const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
   if (fs.existsSync(webDist)) {
-    await app.register(fstatic, { root: webDist, wildcard: false });
+    await app.register(fstatic, { root: webDist });
     app.setNotFoundHandler((req, reply) => (req.url.startsWith('/api/') ? reply.code(404).send({ error: 'Not found' }) : reply.sendFile('index.html')));
   }
   return { app, setPort: (p: number) => { port = p; } };
