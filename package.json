@@ -9,7 +9,7 @@
     "apps/web"
   ],
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.13"
   },
   "scripts": {
     "start": "npm run build -w @fa/web && npm run start -w @fa/server",
@@ -18,7 +18,8 @@
     "test": "npm run test -w @fa/core && npm run test -w @fa/server",
     "typecheck": "npm run typecheck -w @fa/core && npm run typecheck -w @fa/server && npm run typecheck -w @fa/web",
     "lint": "eslint .",
-    "seed:demo": "npm run seed -w @fa/server"
+    "seed:demo": "npm run seed -w @fa/server",
+    "mobile": "cd apps/mobile && npm install && npx expo start"
   },
   "devDependencies": {
     "concurrently": "^9.0.1",

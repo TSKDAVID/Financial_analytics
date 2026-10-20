@@ -1,1 +1,120 @@
-# Financial_analytics
+# 💰 Financial Analytics: local-first personal cash-flow manager
+
+A polished personal finance app that runs **entirely on your own computer**. Your data lives in one local SQLite file. The optional Android companion app connects to your computer privately over **Tailscale**.
+
+Default currency is **GEL (₾)**. Amounts in other currencies are converted automatically using the **National Bank of Georgia** official daily rates.
+
+---
+
+## Quick start
+
+**Requirements:** [Node.js 22 LTS](https://nodejs.org/) (22.13 or newer; Node 24 also works) and Git.
+
+```bash
+git clone https://github.com/TSKDAVID/Financial_analytics.git
+cd Financial_analytics
+npm install        # one-time install
+npm start          # builds the web app, starts the server, opens http://localhost:5317
+```
+
+* On Windows you can also double-click **`start-windows.bat`**. On macOS or Linux, run `./start.sh`.
+* On first launch, choose **Load demo data** to explore, or **Start empty** to begin with your own accounts.
+* Your data is stored in `data/finance.db` in the project folder. Set the `FA_DATA_DIR` env var to keep it somewhere else.
+* Other options: `PORT=5317`, `HOST=0.0.0.0` (the default; needed for phone access), `NO_OPEN=1` (don't open a browser).
+
+Development mode with hot reload: `npm run dev`, then open http://localhost:5173.
+Tests: `npm test` · Types: `npm run typecheck` · Lint: `npm run lint`.
+
+---
+
+## Features
+
+| Area | What you get |
+|---|---|
+| **Transactions** | Income, expenses, and transfers with type, amount, currency, date, account, notes, and tags. Built-in types: salary, freelance, business, rental, gifts, and other income; loans, subscriptions, utilities (electricity, gas, water, internet, phone), rent/mortgage, groceries, transport, health, insurance, education, entertainment, shopping, and other expenses. Custom types and subcategories with colors and icons. Search, filters (date, type, category including subcategories, account, tag, amount range), sorting, bulk edit (category, account, tag, delete). |
+| **Import / export** | CSV or Excel bank statements with column mapping (one signed amount column or separate debit/credit columns, currency column, category column). Category suggestions come from Georgian merchant keywords (Telasi, Magti, Nikora, Bolt, Wolt…) and from your own history. Duplicates are skipped. Export to CSV or Excel. |
+| **Recurring** | Any interval: daily, weekly, every 2 weeks, monthly, quarterly, every 6 months, yearly, or custom every N days, weeks, months, or years. Start date plus an optional end date or number of payments. Items are posted automatically on their due dates and included in forecasts. |
+| **Accounts** | Cash, bank, card, and savings accounts in any currency, with running balances and transfers between accounts. |
+| **Currency** | Automatic official NBG rates (nbg.gov.ge public API), cached in SQLite with full history, so each transaction uses the rate from its own date. Falls back to the last known rate when offline. Manual override per date, per-transaction rate override, converter, and a "re-apply official rates" action. |
+| **Loans** | Bank, principal, interest rate, term, start date. Full amortization table (interest, principal, remaining balance, payoff date), an extra-payment calculator showing interest and months saved, total debt by bank, and loan payments in the bill calendar and alerts. |
+| **Subscriptions & bills** | Billing cycle, next charge, cost per month and per year. Flags duplicates (e.g. two Spotify plans) and unused subscriptions (not used in 45+ days). Utility bills month by month with a chart and alerts when a bill jumps above its usual amount. Bill calendar with paid/unpaid status (marking paid creates the transaction). |
+| **Dashboard** | Net cash flow, income, expenses, savings rate, net worth (assets minus debt). Charts: income vs expenses, spending by type, 12-month trend, and a 365-day cash-flow heatmap. Comparisons with the previous period and the same period last year. Period selector: month, quarter, year, or custom. |
+| **Forecast & what-if** | Balance forecast for 3, 6, or 12 months from recurring items, subscriptions, and loans plus your spending history, with best and worst case bands. What-if planner: income change %, a new monthly expense, a new loan, a one-off expense. |
+| **Insights** | Plain-language insights (category above or below average, seasonal bills, savings rate, yearly subscription cost, unused subscriptions, forecast warnings) and detection of unusual transactions (robust z-score per category). |
+| **Risk control** | Health score from 0 to 100 (savings rate 30, debt load 25, emergency fund 25, stability 20) with a breakdown. Debt-to-income with warnings at 36% and 43%. Emergency fund in months of coverage against your target. Daily low-balance forecast below your minimum before upcoming bills. Budget alerts at 80% and 100%. Stress test showing how long your savings last with no income. |
+| **Budgets & goals** | Monthly budgets per type (subcategories included) with progress bars and optional rollover of unused money. Savings goals with target, date, contributions, and the monthly amount needed. |
+| **Alerts & notifications** | In-app alert inbox (read, snooze, dismiss, pay bill), browser desktop notifications, and push to your phone. Alerts are re-checked every 15 minutes. |
+| **Reports** | Monthly, yearly, or custom PDF reports generated locally (summary, comparisons, breakdowns, trend, largest expenses, budgets, accounts). |
+| **Privacy & settings** | Optional PIN or password lock (scrypt-hashed). Encrypted backup export and restore (AES-256-GCM). Keyboard shortcuts (press `?`). English and Georgian (ქართული). Dark, light, or system theme. Responsive layout. Demo data or a clean empty start. |
+
+### Keyboard shortcuts
+`n` new transaction · `/` search · `g` then `d t r a c l s b f k n p ,` to jump to a page · `Shift+T` toggle theme · `?` help · `Esc` close dialog.
+
+---
+
+## 📱 Android companion app (`apps/mobile`)
+
+The phone app shows a dashboard summary and an **alert inbox**. You can open an alert, mark a bill as paid, snooze, or dismiss it. You can also add and edit transactions. All data stays on your computer; the phone talks to it directly over Tailscale.
+
+### 1. Tailscale (private network, free)
+1. Install [Tailscale](https://tailscale.com/download) on your computer and on your Android phone, and sign in with the **same account** on both.
+2. On the computer, note its Tailscale IP (starts with `100.`). The pairing screen lists it automatically.
+3. Keep the desktop app running (`npm start`). The phone can only sync while the computer is on.
+
+> Security: requests from anything other than `localhost` are **rejected unless they carry a paired device token**. Pairing codes are single-use and expire after 10 minutes. You can revoke devices in Settings → Phone & notifications.
+
+### 2. Build and install the APK
+Pick one option:
+
+**A. EAS cloud build (easiest, no Android Studio needed):**
+```bash
+cd apps/mobile
+npm install
+npx eas-cli@latest login              # free Expo account
+npx eas-cli@latest init               # creates the projectId (also enables Expo push)
+npx eas-cli@latest build -p android --profile preview
+```
+Download the `.apk` from the link EAS prints, copy it to your phone, and install it (allow "install unknown apps").
+
+**B. Local build (needs Android Studio / Android SDK + JDK 17):**
+```bash
+cd apps/mobile && npm install
+npx expo prebuild -p android
+cd android && ./gradlew assembleRelease    # Windows: gradlew.bat assembleRelease
+# APK: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+### 3. Pair
+On the desktop, open **Settings → Phone & notifications → Pair Android phone**. In the phone app, tap **Scan QR code**. You can also type the server URL (`http://100.x.y.z:5317`) and the pairing code by hand.
+
+### 4. Notifications
+Only a **short alert title and one line of text** (e.g. "Bill: Electricity – Telasi · 85 GEL due tomorrow") ever leave your computer. Three channels are available:
+1. **Background sync (always on, no cloud):** the app checks the desktop over Tailscale about every 15 minutes (Android WorkManager) and shows local notifications for new alerts.
+2. **Expo push (instant):** works automatically once you ran `eas init` (it adds a projectId) and rebuilt the APK. The phone registers its push token with your desktop on pairing. Toggle it in Settings.
+3. **ntfy (optional):** in Settings, set a secret ntfy topic (🎲 generates one) and subscribe to it in the free [ntfy](https://ntfy.sh) Android app. You can also self-host ntfy and change the server URL.
+
+Use **Send test notification** in Settings to check.
+
+---
+
+## 🔐 Backups
+Settings → Data → **Download encrypted backup** creates a `.fabackup` file (AES-256-GCM, key derived from your password with scrypt). The password cannot be recovered. **Restore from backup** replaces all current data. You can also copy `data/finance.db` while the app is stopped.
+
+---
+
+## Architecture
+```
+packages/core   Pure TypeScript finance engine (recurrence, amortization, forecasting, health score,
+                currency conversion, anomaly detection, import category suggestions) + unit tests (vitest)
+apps/server     Fastify API + SQLite (better-sqlite3, WAL) + zod validation, NBG rate fetcher, alert engine,
+                push (Expo / ntfy), device pairing, PIN lock, encrypted backups. Serves the built web app.
+apps/web        React 18 + Vite + Tailwind (shadcn-style components) + Recharts + TanStack Query,
+                SheetJS (CSV/Excel), jsPDF (reports), English/Georgian i18n
+apps/mobile     Expo (SDK 58) React Native Android companion
+```
+API base: `http://localhost:5317/api` (e.g. `/dashboard`, `/transactions`, `/forecast`, `/risk`, `/alerts`).
+
+## Troubleshooting
+* **`better-sqlite3` install fails on Windows:** use Node 22 LTS x64 (prebuilt binaries are downloaded automatically). Only if it still fails, install "Desktop development with C++" from Visual Studio Build Tools.
+* **Phone can't connect:** check that Tailscale shows both devices as connected, that the desktop app is running, and that the Windows firewall allows Node.js on private networks (accept the prompt on first start).
+* **Rates show "fallback":** you're offline. The last known official rate is used until NBG is reachable again.

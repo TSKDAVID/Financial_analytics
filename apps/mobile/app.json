@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Financial Analytics",
+    "slug": "financial-analytics",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#4F46E5",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "ge.financial.analytics",
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-background-task",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan the pairing QR code shown in the desktop app"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#4F46E5"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "scheme": "finance",
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}
