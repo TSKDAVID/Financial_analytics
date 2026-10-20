@@ -1,4 +1,5 @@
 import { merchantStats } from './merchants';
+import { reconciliation } from './cashflow';
 import {
   addDays, addMonths, endOfMonth, monthKey, startOfMonth, todayISO, forecast, dailyProjection, healthScore, dtiLevel, stressTest,
   detectAnomalies, isSpike, seasonality, mean, diffDays, monthsBetween,
@@ -47,6 +48,7 @@ export function dashboard(db: DB, from: string, to: string) {
       prev: { ...prev, incomePct: pct(cur.income, prev.income), expensePct: pct(cur.expense, prev.expense), netPct: pct(cur.net, prev.net) },
       yoy: { ...yoy, incomePct: pct(cur.income, yoy.income), expensePct: pct(cur.expense, yoy.expense), netPct: pct(cur.net, yoy.net) },
     },
+    reconciliation: reconciliation(db, from, to),
     byCategory, trend, daily, series, accounts: accountBalances(db).filter((a) => !a.archived), dataStatus: dataStatus(db),
   };
 }

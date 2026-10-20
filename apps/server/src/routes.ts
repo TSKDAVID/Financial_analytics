@@ -8,6 +8,7 @@ import {
   insertTransaction, materialize, payBill, unpayBill, catTree, accountBalances, loanStatus, applyLoanUpdate, subscriptionInfo, duplicateSubscriptions,
   budgetStatus, goalStatus, loanInput, type LoanRow, type SubRow, periodSummary,
 } from './services';
+import { runPlan, savedScenario, saveScenario } from './plan';
 import { dashboard, forecastData, riskData, insights, anomaliesList, utilitiesData } from './analytics';
 import { evaluateAlerts } from './alerts';
 import { pushAlert } from './notify';
@@ -301,6 +302,17 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   // ---------- analytics ----------
   app.get('/api/dashboard', async (req) => { const q = Q(req); return dashboard(db, q.from ?? startOfMonth(todayISO()), q.to ?? endOfMonth(todayISO())); });
   app.post('/api/forecast', async (req) => forecastData(db, parse(z.object({ months: z.coerce.number().int().min(1).max(36).default(12), incomeChangePct: z.coerce.number().min(-100).max(500).optional(), newExpenseMonthly: money.nonnegative().optional(), newLoan: z.object({ principal: money.nonnegative(), annualRatePct: z.coerce.number().min(0), termMonths: z.coerce.number().int().min(1) }).nullable().optional(), oneOff: z.array(z.object({ date, amount: money })).optional() }), req.body ?? {})));
+  app.get('/api/plan', async () => runPlan(db, savedScenario(db)));
+  app.post('/api/plan', async (req) => {
+    const b = parse(z.object({ save: z.boolean().optional(), reset: z.boolean().optional(), scenario: z.object({
+      months: z.coerce.number().int().min(1).max(60), incomes: z.array(z.object({ name: z.string().max(80), amount: z.coerce.number().min(0).max(1e9) })).max(20),
+      expenses: z.coerce.number().min(0).max(1e9), savingsMonthly: z.coerce.number().min(0).max(1e9), savingsRatePct: z.coerce.number().min(0).max(100),
+      strategy: z.enum(['none', 'avalanche', 'snowball']), extraPool: z.coerce.number().min(0).max(1e9), debtExtra: z.record(z.coerce.number().min(0).max(1e9)) }).partial().optional() }), req.body ?? {});
+    if (b.reset) { db.prepare("DELETE FROM settings WHERE key = 'forecastPlan'").run(); return runPlan(db, null); }
+    const r = runPlan(db, b.scenario ?? savedScenario(db));
+    if (b.save) saveScenario(db, r.scenario);
+    return r;
+  });
   app.get('/api/risk', async () => riskData(db));
   app.get('/api/insights', async () => insights(db));
   app.get('/api/anomalies', async () => anomaliesList(db));

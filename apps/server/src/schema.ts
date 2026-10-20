@@ -1,5 +1,6 @@
 import { reconcileRecurring, ensureReconcileTable, migrateSalaryRules } from './reconcile';
 // Pure schema + settings helpers, shared by the Node server and the offline Android app (no Node imports here).
+import { migrateCashflow } from './cashflow';
 import { migrateImports, migrateAnalyticsFix, migrateTransactionDates, refreshPeopleNetting } from './statements/service';
 import { migrateCredit } from './credit/service';
 import { migrateSync } from './sync/track';
@@ -124,6 +125,8 @@ export function initDb(db: DB) {
   migrateSalaryRules(db);
   // v1.3: friends always settle up — re-apply people flows with the new default (undoable per person)
   if (!getSetting(db, 'peopleV13')) { refreshPeopleNetting(db); setSetting(db, 'peopleV13', '1'); }
+  // v1.4: imports tied to their account, loan installments not counted twice, rent recognised
+  migrateCashflow(db, refreshPeopleNetting);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
   if (!getSetting(db, 'minBalanceMigrated')) { if (getSetting(db, 'minBalance') === '300') setSetting(db, 'minBalance', ''); setSetting(db, 'minBalanceMigrated', '1'); }
   return db;

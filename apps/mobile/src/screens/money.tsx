@@ -4,15 +4,21 @@ import { Badge, Bar, Btn, Card, Chip, Empty, H2, Input, Loading, NumInput, Pick,
 import { Bars, Donut, LineChart } from '../charts';
 import { act, del, money, pct, post, put, useQ, dateFmt, monthFmt, todayISO, CHART_COLORS } from '../lapi';
 import { OverdueButton, BillCleanupNotice, AnalyticsFixNotice, MonthSheet } from './extra';
+import { PlanForecastView, ReconCard } from './planForecast';
 import { AccountPick, CategoryPick, CurrencyPick, NoData, UNITS, num, type ScreenProps } from './common';
 
 // ---------- Dashboard ----------
 export function Dashboard({ nav }: ScreenProps) {
   const c = useColors(); const d = useQ<any>('/dashboard'); const ins = useQ<any[]>('/insights'); const bills = useQ<any[]>('/bills/upcoming');
   const [month, setMonth] = useState<string | null>(null);
+  const [view, setView] = useState<'overview' | 'forecast'>('overview');
+  const tabs = <Seg value={view} options={[{ value: 'overview', label: 'Overview' }, { value: 'forecast', label: 'Forecast' }]} onChange={setView} />;
+  if (view === 'forecast') return <Screen title="Forecast">{tabs}<PlanForecastView /></Screen>;
   if (!d.data) return <Loading />;
   const x = d.data; const ok = x.dataStatus?.sufficient;
+  const rec = x.reconciliation?.accounts?.length ? x.reconciliation : null;
   return <Screen title="Overview" onRefresh={d.reload} fab={{ label: 'Transaction', onPress: () => nav.push('txForm') }}>
+    {tabs}
     <Card style={{ backgroundColor: c.primary, borderWidth: 0 }}>
       <Text style={{ color: '#ffffffcc', fontSize: 13 }}>Net worth</Text>
       <Text style={{ color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 2 }}>{money(x.netWorth)}</Text>
@@ -23,9 +29,10 @@ export function Dashboard({ nav }: ScreenProps) {
       <Stat label="Income (month)" value={money(x.income)} tone={c.success} /><Stat label="Expenses (month)" value={money(x.expense)} tone={c.danger} />
     </View>
     <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-      <Stat label="Net" value={money(x.net)} tone={x.net >= 0 ? c.success : c.danger} />
+      <Stat label={rec ? 'Balance change' : 'Net'} value={money(rec ? rec.change : x.net)} sub={rec ? `income − expenses ${money(x.net)}` : undefined} tone={(rec ? rec.change : x.net) >= 0 ? c.success : c.danger} />
       <Stat label="Savings rate" value={ok && x.income > 0 ? pct(x.savingsRate) : '—'} sub={ok ? undefined : 'needs income & expenses'} />
     </View>
+    <ReconCard r={rec} />
     {!ok ? <Card><NoData nav={nav} what="Add income and expenses to see trends" /></Card> : <>
       <Card><H2>Last 12 months</H2><T muted style={{ fontSize: 11 }}>Tap a month for details</T><View style={{ height: 8 }} /><Bars data={x.trend} keys={['income', 'expense']} colors={[c.success, c.danger]} label={(d) => monthFmt(d.month)} onPick={(d) => setMonth(d.month)} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>{x.trend.slice(-6).map((m: any) => <Btn key={m.month} small kind="outline" title={monthFmt(m.month)} onPress={() => setMonth(m.month)} />)}</View></Card>

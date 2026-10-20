@@ -15,8 +15,18 @@ import { InsightList, makePeriod, shiftPeriod, type Period, type PeriodKind, axi
 import { openNewTx } from '../components/Layout';
 import { MonthPanel } from '../components/MonthPanel';
 import { AnalyticsFixNotice } from '../components/AnalyticsFixNotice';
+import { PlanForecast } from '../components/PlanForecast';
+import { ReconciliationCard } from '../components/Reconciliation';
 
 export default function Dashboard() {
+  const [view, setView] = useState<'overview' | 'forecast'>('overview');
+  return <div className="space-y-4">
+    <Tabs<'overview' | 'forecast'> value={view} onChange={setView} options={[{ value: 'overview', label: 'Overview' }, { value: 'forecast', label: 'Forecast' }]} />
+    {view === 'overview' ? <DashboardOverview /> : <><PageHeader title="Forecast" subtitle="Plan income, spending, savings and debt payoff — see how your net worth grows" /><PlanForecast /></>}
+  </div>;
+}
+
+function DashboardOverview() {
   const t = useT();
   const [p, setP] = useState<Period>(makePeriod('month'));
   const d = useApi<any>(`/dashboard${qs({ from: p.from, to: p.to })}`);
@@ -51,12 +61,14 @@ export default function Dashboard() {
       <AnalyticsFixNotice />
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
-        <Stat label={t('dash.netCashFlow')} value={money(x.net)} delta={x.compare.prev.netPct} deltaLabel={t('dash.vsLast')} icon={<Scale className="h-4 w-4" />} tone="#6366f1" />
+        <Stat label={x.reconciliation?.accounts?.length ? 'Balance change' : t('dash.netCashFlow')} value={money(x.reconciliation?.accounts?.length ? x.reconciliation.change : x.net)} delta={x.reconciliation?.accounts?.length ? undefined : x.compare.prev.netPct} deltaLabel={t('dash.vsLast')} icon={<Scale className="h-4 w-4" />} tone="#6366f1" />
         <Stat label={t('dash.income')} value={money(x.income)} delta={x.compare.prev.incomePct} deltaLabel={t('dash.vsLast')} icon={<TrendingUp className="h-4 w-4" />} tone="#10b981" />
         <Stat label={t('dash.expenses')} value={money(x.expense)} delta={x.compare.prev.expensePct} deltaLabel={t('dash.vsLast')} icon={<TrendingDown className="h-4 w-4" />} tone="#ef4444" invert />
         <Stat label={t('dash.savingsRate')} value={pct(x.savingsRate, 1)} icon={<PiggyBank className="h-4 w-4" />} tone="#f59e0b" />
         <Stat label={t('dash.netWorth')} value={money(x.netWorth, 'GEL', { compact: Math.abs(x.netWorth) > 999999 })} icon={<Wallet className="h-4 w-4" />} tone="#8b5cf6" />
       </div>
+
+      <ReconciliationCard r={x.reconciliation} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <CompareCard title={t('dash.vsLast')} cur={x} other={x.compare.prev} />

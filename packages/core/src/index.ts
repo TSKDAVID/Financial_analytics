@@ -11,3 +11,4 @@ export * from './textnorm';
 export * from './classify';
 export * from './matching';
 export * from './merchants';
+export * from './plan';

@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import TR, { act } from 'react-test-renderer';
 import { api, reset } from './engine-node';
 import { Accounts, Categories, Dashboard, Recurring, Transactions, TxForm } from '../src/screens/money';
+import { PlanForecastView } from '../src/screens/planForecast';
 import { Alerts, Budgets, Forecast, Insights, Loans, Reports, Risk, Schedule, Subscriptions } from '../src/screens/plan';
 import { CardTermsScreen, ImportGroupsScreen, PeopleScreen, MerchantsScreen } from '../src/screens/extra';
 import { BatchScreen, CreditReportScreen, ImportScreen, More, SettingsScreen, SyncScreen } from '../src/screens/app';
@@ -9,7 +10,7 @@ import { ErrorBoundary } from '../src/ErrorBoundary';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const SCREENS: Record<string, [any, any?]> = {
-  dashboard: [Dashboard], more: [More], txForm: [TxForm], transactions: [Transactions], accounts: [Accounts], categories: [Categories], recurring: [Recurring],
+  dashboard: [Dashboard], planForecast: [PlanForecastView], more: [More], txForm: [TxForm], transactions: [Transactions], accounts: [Accounts], categories: [Categories], recurring: [Recurring],
   loans: [Loans], schedule: [Schedule, 'loan'], subscriptions: [Subscriptions], budgets: [Budgets], forecast: [Forecast], insights: [Insights], risk: [Risk], alerts: [Alerts], reports: [Reports],
   import: [ImportScreen], batch: [BatchScreen, { id: 1 }], importGroups: [ImportGroupsScreen, { id: 1 }], people: [PeopleScreen], merchants: [MerchantsScreen],
   cardTerms: [CardTermsScreen, 'loan'], editTx: [TxForm, 'tx'], accountTx: [Transactions, 'acct'], creditReport: [CreditReportScreen, { id: 1 }], sync: [SyncScreen], settings: [SettingsScreen],

@@ -1,3 +1,4 @@
+import { findImportedLoanPayment } from './cashflow';
 import { importedMatch, isSkipped } from './reconcile';
 import {
   addDays, addMonths, amortize, balanceAsOf, monthKey, occurrences, startOfMonth, endOfMonth, todayISO, nextOccurrence,
@@ -83,6 +84,13 @@ export async function payBill(db: DB, billId: number, opts: { date?: string; amo
       db.prepare("UPDATE alerts SET read = 1, dismissed = 1 WHERE ref_type = 'bill' AND ref_id = ?").run(billId);
       return db.prepare('SELECT * FROM bills WHERE id = ?').get(billId);
     }
+  }
+  if (b.loan_id && opts.amount == null) {
+    // the installment is already in an imported statement: link it instead of adding a second expense
+    const hit = findImportedLoanPayment(db, b);
+    if (hit) { db.prepare('UPDATE bills SET paid = 1, paid_date = (SELECT date FROM transactions WHERE id = ?), transaction_id = ? WHERE id = ?').run(hit, hit, billId);
+      db.prepare("UPDATE alerts SET read = 1, dismissed = 1 WHERE ref_type = 'bill' AND ref_id = ?").run(billId);
+      return db.prepare('SELECT * FROM bills WHERE id = ?').get(billId); }
   }
   let category_id: number | null = null, account_id: number | null = opts.account_id ?? null;
   if (b.subscription_id) {

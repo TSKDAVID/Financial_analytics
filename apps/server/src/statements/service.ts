@@ -1,3 +1,4 @@
+import { guessAccountForBank } from '../cashflow';
 import { reconcileRecurring, restoreReconciled } from '../reconcile';
 import { normalizePattern } from '@fa/core';
 import { transactionDate } from './parse';
@@ -156,7 +157,7 @@ function unapplyPostedMatch(db: DB, m: any) {
  * (gifts, paying someone for something) and split costs stay as spending/income. Fully reversible.
  */
 export function refreshPeopleNetting(db: DB) {
-  const rows = db.prepare("SELECT id, date, amount_gel, currency, kind, counterparty, moved_from FROM transactions WHERE tx_kind IN ('transfer_out','transfer_in') AND counterparty IS NOT NULL AND (kind != 'transfer' OR moved_from LIKE '%\"reason\":\"people\"%')").all() as any[];
+  const rows = db.prepare("SELECT id, date, amount_gel, currency, kind, counterparty, description, moved_from FROM transactions WHERE tx_kind IN ('transfer_out','transfer_in') AND counterparty IS NOT NULL AND (kind != 'transfer' OR moved_from LIKE '%\"reason\":\"people\"%')").all() as any[];
   const dirOf = (r: any) => (r.moved_from ? JSON.parse(r.moved_from).kind : r.kind) === 'income' ? 'in' : 'out';
   const groups = groupPeople(rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount_gel, amountGel: r.amount_gel, currency: 'GEL', dir: dirOf(r), counterparty: r.counterparty, text: r.description ?? '' })));
   const ov = new Map((db.prepare('SELECT person_key, pattern FROM people_overrides').all() as any[]).map((o) => [o.person_key, normalizePattern(o.pattern)]));
@@ -334,6 +335,8 @@ export async function approve(db: DB, batchId: number, rowIds?: number[]) {
   const b = db.prepare('SELECT * FROM import_batches WHERE id = ?').get(batchId) as any;
   if (!b) throw Object.assign(new Error('Import not found'), { statusCode: 404 });
   if (b.status === 'discarded') throw Object.assign(new Error('This import was discarded'), { statusCode: 400 });
+  // no account picked: use the one account of this bank (balances and the cash-flow check need it)
+  if (b.account_id == null) { const g = guessAccountForBank(db, b.bank); if (g) { db.prepare('UPDATE import_batches SET account_id = ? WHERE id = ?').run(g, batchId); b.account_id = g; } }
   let rows = db.prepare('SELECT * FROM import_rows WHERE batch_id = ? AND excluded = 0 AND transaction_id IS NULL ORDER BY idx').all(batchId) as any[];
   if (rowIds?.length) { const set = new Set(rowIds); rows = rows.filter((r) => set.has(r.id)); }
   // approving an import also confirms its strong transfer suggestions (≥ AUTO_CONFIRM); weaker ones stay suggestions
