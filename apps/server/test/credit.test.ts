@@ -99,5 +99,13 @@ describe('credit report approval', () => {
     await call('PUT', `/api/loans/${c.id}`, { monthly_payment: 100, payment_pct: null });
     expect((await call('POST', `/api/loan-updates/${hist[0].id}/undo`)).code).toBe(200);
     c = await card(); expect(c).toMatchObject({ remaining: 640.5, needs_input: true });
+    // fixed monthly fee (insurance) is part of the payment total, bills and the schedule
+    const L = loan.id;
+    await call('PUT', `/api/loans/${L}`, { monthly_fee: 5 });
+    const l2 = (await call('GET', '/api/loans')).body.find((x: any) => x.id === L);
+    expect(l2.monthly_total).toBeCloseTo(110.65, 2);
+    const bill = db.prepare('SELECT amount FROM bills WHERE loan_id = ? AND paid = 0 LIMIT 1').get(L) as any;
+    expect(bill.amount).toBeCloseTo(110.65, 2);
+    expect((await call('GET', `/api/loans/${L}/schedule`)).body.fee).toBe(5);
   });
 });

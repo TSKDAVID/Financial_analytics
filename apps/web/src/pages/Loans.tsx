@@ -55,7 +55,7 @@ function LoanCard({ l, onEdit, onUpdate, onSchedule }: { l: any; onEdit: () => v
     {l.needs_input && <div className="mt-3 rounded-lg bg-warning/10 text-sm p-3 flex items-center gap-3"><span className="flex-1">{t('lx.needsInputHint')}</span><Button size="sm" onClick={onUpdate}>{t('lx.enterPayment')}</Button></div>}
     <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
       <div><div className="text-xs text-muted-foreground">{l.revolving ? t('lx.balance') : t('loan.remaining')}</div><div className="font-semibold num">{money(l.remaining, l.currency)}</div></div>
-      <div><div className="text-xs text-muted-foreground">{t('loan.monthly')}</div><div className={cn('font-semibold num', l.needs_input && 'text-warning')}>{l.needs_input ? '—' : money(l.monthly_payment + (l.next_payment ? l.extra_monthly : 0), l.currency)}</div></div>
+      <div><div className="text-xs text-muted-foreground">{t('loan.monthly')}</div><div className={cn('font-semibold num', l.needs_input && 'text-warning')}>{l.needs_input ? '—' : money(l.monthly_total || l.monthly_payment, l.currency)}</div>{l.monthly_fee > 0 && !l.needs_input && <div className="text-[10px] text-muted-foreground">{t('lx.inclFee', { fee: money(l.monthly_fee, l.currency) })}</div>}</div>
       <div><div className="text-xs text-muted-foreground">{l.revolving ? t('lx.payoffEst') : t('loan.payoff')}</div><div className={cn('font-semibold', l.never_pays_off && 'text-danger text-xs')}>{l.never_pays_off ? t('lx.never') : l.needs_input || !l.payoff_date ? '—' : dateFmt(l.payoff_date, { month: 'short', year: 'numeric' })}</div></div>
     </div>
     {l.revolving && l.credit_limit ? <div className="mt-4"><Progress value={l.utilization ?? 0} /><div className="flex justify-between text-[11px] text-muted-foreground mt-1"><span>{t('lx.utilization')} {pct(l.utilization ?? 0)} · {t('lx.limit')} {money(l.credit_limit, l.currency)}</span><span>{money(l.available ?? 0, l.currency)} {t('lx.available')}</span></div></div>
@@ -98,7 +98,7 @@ function LoanDialog({ loan, onClose }: { loan: any; onClose: () => void }) {
       term_months: pctMode ? 0 : payPinned ? (revolving ? 0 : Math.max(1, Math.min(600, Number.isFinite(termN) && termN > 0 ? termN : Number(f.term_months) || 1))) : Math.max(revolving ? 0 : 1, termN || 0),
       payment_pct: pctMode ? Number(f.payment_pct) || null : null, min_payment: pctMode ? Number(f.min_payment) || null : null,
       credit_limit: revolving ? (Number(f.credit_limit) || null) : null, due_day: revolving ? (Number(f.due_day) || null) : null,
-      start_date: f.start_date, extra_monthly: Number(f.extra_monthly || 0), account_id: f.account_id, notes: f.notes ?? null, active: !!f.active };
+      start_date: f.start_date, extra_monthly: Number(f.extra_monthly || 0), monthly_fee: Number(f.monthly_fee || 0), account_id: f.account_id, notes: f.notes ?? null, active: !!f.active };
     if (await run(() => (f.id ? put(`/loans/${f.id}`, body) : post('/loans', body)), t('common.saved'))) onClose(); };
   const payoff = termN > 0 && f.start_date ? addMonths(f.start_date, termN - 1) : null;
   const linked = <>
@@ -128,7 +128,8 @@ function LoanDialog({ loan, onClose }: { loan: any; onClose: () => void }) {
       {!revolving && linked}
       <Field label={revolving ? t('common.next') : t('loan.start')}><Input required type="date" value={f.start_date} onChange={(e) => set({ start_date: e.target.value })} /></Field>
       <Field label={t('loan.extra')}><Input type="number" step="0.01" min="0" value={f.extra_monthly} onChange={(e) => set({ extra_monthly: e.target.value })} /></Field>
-      <Field label={t('common.account')} className="col-span-2"><AccountSelect value={f.account_id} onChange={(v) => set({ account_id: v })} /></Field>
+      <Field label={t('lx.fee')} hint={t('lx.feeHint')}><Input type="number" step="0.01" min="0" value={f.monthly_fee ?? ''} onChange={(e) => set({ monthly_fee: e.target.value })} placeholder="0" /></Field>
+      <Field label={t('common.account')}><AccountSelect value={f.account_id} onChange={(v) => set({ account_id: v })} /></Field>
     </form></Modal>;
 }
 
@@ -173,7 +174,7 @@ function ScheduleView({ data, currency = 'GEL' }: { data: any; currency?: string
   return <div className="space-y-4">
     {data.interestSaved > 0 && <div className="rounded-xl bg-success/10 text-success p-4 font-medium">{t('loan.saved', { amount: money(data.interestSaved, currency), months: data.monthsSaved })}</div>}
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-      <Mini l={t('loan.monthly')} v={money(data.schedule.monthlyPayment, currency)} /><Mini l={t('loan.totalInterest')} v={money(data.schedule.totalInterest, currency)} />
+      <Mini l={t('loan.monthly')} v={money(data.schedule.monthlyPayment + (data.fee ?? 0), currency)} /><Mini l={t('loan.totalInterest')} v={money(data.schedule.totalInterest, currency)} />
       <Mini l={t('common.total')} v={money(data.schedule.totalPaid, currency)} /><Mini l={t('loan.payoff')} v={dateFmt(data.schedule.payoffDate)} />
     </div>
     <div className="h-56"><ResponsiveContainer><ComposedChart data={rows}>
@@ -182,8 +183,8 @@ function ScheduleView({ data, currency = 'GEL' }: { data: any; currency?: string
       <Bar yAxisId="a" dataKey="principal" stackId="p" fill="#6366f1" name={t('loan.principalPart')} /><Bar yAxisId="a" dataKey="interest" stackId="p" fill="#ef4444" name={t('loan.interest')} /><Bar yAxisId="a" dataKey="extra" stackId="p" fill="#10b981" name="Extra" />
       <Area yAxisId="b" dataKey="balance" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} name={t('common.balance')} />
     </ComposedChart></ResponsiveContainer></div>
-    <div className="max-h-80 overflow-y-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/60 sticky top-0"><tr><th className={th}>#</th><th className={th}>{t('common.date')}</th><th className={cn(th, 'text-right')}>{t('loan.monthly')}</th><th className={cn(th, 'text-right')}>{t('loan.interest')}</th><th className={cn(th, 'text-right')}>{t('loan.principalPart')}</th><th className={cn(th, 'text-right')}>Extra</th><th className={cn(th, 'text-right')}>{t('loan.remaining')}</th></tr></thead>
-      <tbody>{rows.map((r) => <tr key={r.n} className={cn('border-t num', r.date < today() && 'text-muted-foreground')}><td className={td}>{r.n}</td><td className={td}>{dateFmt(r.date)}</td><td className={cn(td, 'text-right')}>{money(r.payment, currency)}</td><td className={cn(td, 'text-right text-danger')}>{money(r.interest, currency)}</td><td className={cn(td, 'text-right')}>{money(r.principal, currency)}</td><td className={cn(td, 'text-right text-success')}>{r.extra ? money(r.extra, currency) : ''}</td><td className={cn(td, 'text-right font-medium')}>{money(r.balance, currency)}</td></tr>)}</tbody></table></div>
+    <div className="max-h-80 overflow-y-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/60 sticky top-0"><tr><th className={th}>#</th><th className={th}>{t('common.date')}</th><th className={cn(th, 'text-right')}>{t('loan.monthly')}</th><th className={cn(th, 'text-right')}>{t('loan.interest')}</th><th className={cn(th, 'text-right')}>{t('loan.principalPart')}</th><th className={cn(th, 'text-right')}>Extra</th>{data.fee > 0 && <th className={cn(th, 'text-right')}>{t('lx.fee')}</th>}<th className={cn(th, 'text-right')}>{t('loan.remaining')}</th></tr></thead>
+      <tbody>{rows.map((r) => <tr key={r.n} className={cn('border-t num', r.date < today() && 'text-muted-foreground')}><td className={td}>{r.n}</td><td className={td}>{dateFmt(r.date)}</td><td className={cn(td, 'text-right')}>{money(r.payment, currency)}</td><td className={cn(td, 'text-right text-danger')}>{money(r.interest, currency)}</td><td className={cn(td, 'text-right')}>{money(r.principal, currency)}</td><td className={cn(td, 'text-right text-success')}>{r.extra ? money(r.extra, currency) : ''}</td>{data.fee > 0 && <td className={cn(td, 'text-right')}>{money(data.fee, currency)}</td>}<td className={cn(td, 'text-right font-medium')}>{money(r.balance, currency)}</td></tr>)}</tbody></table></div>
   </div>;
 }
 const Mini = ({ l, v }: { l: string; v: string }) => <div className="rounded-lg bg-muted/50 p-3"><div className="text-[11px] text-muted-foreground">{l}</div><div className="font-semibold num">{v}</div></div>;

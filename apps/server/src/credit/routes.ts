@@ -23,7 +23,7 @@ export function creditRoutes(app: FastifyInstance, db: DB) {
       .map((c) => ({ ...c, data: JSON.parse(c.data), proposed: JSON.parse(c.proposed), diff: JSON.parse(c.diff) }));
     return { ...report(id), contracts };
   });
-  const loanPatch = z.object({ name: z.string().min(1).max(100), bank: z.string().min(1).max(80), principal: z.number().nonnegative(), currency: z.string().length(3), annual_rate: z.number().min(0).max(200), term_months: z.number().int().min(0).max(600), monthly_payment: z.number().positive().nullable(), credit_limit: z.number().nonnegative().nullable(), due_day: z.number().int().min(1).max(31).nullable(), start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), notes: z.string() }).partial();
+  const loanPatch = z.object({ name: z.string().min(1).max(100), bank: z.string().min(1).max(80), principal: z.number().nonnegative(), currency: z.string().length(3), annual_rate: z.number().min(0).max(200), term_months: z.number().int().min(0).max(600), monthly_payment: z.number().positive().nullable(), credit_limit: z.number().nonnegative().nullable(), due_day: z.number().int().min(1).max(31).nullable(), monthly_fee: z.number().nonnegative(), start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), notes: z.string() }).partial();
   app.put('/api/credit-contracts/:id', async (req) => updateContract(db, idP(req.params), parse(z.object({ excluded: z.boolean().optional(), proposed: loanPatch.optional() }), req.body)));
   app.post('/api/credit-reports/:id/approve', async (req) => approveReport(db, idP(req.params), parse(z.object({ ids: z.array(z.number().int()).optional() }).default({}), req.body ?? {})?.ids));
   app.post('/api/credit-reports/:id/revert', async (req) => revertReport(db, idP(req.params)));

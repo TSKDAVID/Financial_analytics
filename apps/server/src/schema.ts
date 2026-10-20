@@ -115,7 +115,7 @@ export function migrateLoans(db: DB) {
   const cols = (db.prepare('PRAGMA table_info(loans)').all() as { name: string }[]).map((c) => c.name);
   const add = (c: string, def: string) => { if (!cols.includes(c)) db.exec(`ALTER TABLE loans ADD COLUMN ${c} ${def}`); };
   add('monthly_payment', 'REAL'); add('payment_pct', 'REAL'); add('min_payment', 'REAL'); add('credit_limit', 'REAL');
-  add('due_day', 'INTEGER'); add('needs_input', 'INTEGER NOT NULL DEFAULT 0'); add('balance_date', 'TEXT');
+  add('due_day', 'INTEGER'); add('needs_input', 'INTEGER NOT NULL DEFAULT 0'); add('balance_date', 'TEXT'); add('monthly_fee', 'REAL NOT NULL DEFAULT 0'); // e.g. life insurance charged with every payment
   db.exec(`CREATE TABLE IF NOT EXISTS loan_updates (
     id INTEGER PRIMARY KEY, loan_id INTEGER NOT NULL REFERENCES loans(id) ON DELETE CASCADE, date TEXT NOT NULL,
     balance REAL, monthly_payment REAL, payment_pct REAL, annual_rate REAL, prev TEXT NOT NULL DEFAULT '{}', note TEXT,

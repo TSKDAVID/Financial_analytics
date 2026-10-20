@@ -36,7 +36,7 @@ export function estimateRate(principal: number, termMonths: number, payment: num
 const REVOLVING = new Set(['credit_card', 'overdraft']);
 const TYPE_NAME: Record<string, string> = { loan: 'Loan', credit_card: 'Credit card', overdraft: 'Overdraft', installment: 'Installment', mortgage: 'Mortgage', other: 'Credit' };
 export interface LoanFields { name: string; bank: string; principal: number; currency: string; annual_rate: number; term_months: number; start_date: string; extra_monthly: number; notes: string; kind: string; active: number;
-  monthly_payment: number | null; credit_limit: number | null; due_day: number | null; needs_input: number; balance_date: string | null }
+  monthly_payment: number | null; credit_limit: number | null; due_day: number | null; needs_input: number; balance_date: string | null; monthly_fee: number }
 
 const monthsBetween = (a: string, b: string) => { const [y1, m1, d1] = a.split('-').map(Number); const [y2, m2, d2] = b.split('-').map(Number); return (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0); };
 
@@ -55,14 +55,14 @@ export function proposeLoan(c: CreditContract, reportDate: string | null): LoanF
     const term = !pay && left >= 1 && left <= 120 ? left : 0;
     return { name: `${TYPE_NAME[c.type]}${tail}`, bank: c.creditor ?? 'Unknown', principal: balance, currency: c.currency,
       annual_rate: c.interestRate ?? 0, term_months: term, start_date: due ?? nextDueDate(asOf, dueDay ?? 15), extra_monthly: 0, kind: c.type, active: c.active ? 1 : 0,
-      monthly_payment: pay, credit_limit: limit, due_day: dueDay, needs_input: pay || term ? 0 : 1, balance_date: asOf,
+      monthly_payment: pay, monthly_fee: c.monthlyFee ?? 0, credit_limit: limit, due_day: dueDay, needs_input: pay || term ? 0 : 1, balance_date: asOf,
       notes: `Imported from Creditinfo · revolving line${pay ? '' : term ? ` · no payment in the report — spread over the ${term} months left until the contract end date; adjust if your plan differs` : ' · the report has no monthly payment — enter yours'}${c.interestRate == null ? ' · interest rate not in the report' : ''}` };
   }
   const term = c.installmentsTotal && c.termMonths && Math.abs(c.installmentsTotal - c.termMonths) <= 2 ? c.installmentsTotal : c.termMonths ?? c.installmentsTotal ?? 12;
   const principal = c.originalAmount ?? c.balance ?? 0;
   const est = c.interestRate ?? (pay ? estimateRate(principal, term, pay) : null);
   return { name: `${TYPE_NAME[c.type]}${tail}`, bank: c.creditor ?? 'Unknown', principal, currency: c.currency, annual_rate: est ?? 0, term_months: term, start_date: c.startDate ?? todayISO(),
-    extra_monthly: 0, kind: c.type, active: c.active ? 1 : 0, monthly_payment: pay, credit_limit: null, due_day: null, needs_input: pay || c.interestRate != null ? 0 : 1, balance_date: null,
+    extra_monthly: 0, kind: c.type, active: c.active ? 1 : 0, monthly_payment: pay, monthly_fee: c.monthlyFee ?? 0, credit_limit: null, due_day: null, needs_input: pay || c.interestRate != null ? 0 : 1, balance_date: null,
     notes: `Imported from Creditinfo${c.interestRate == null && pay ? ` · rate estimated from the ${pay} ${c.currency} monthly payment` : ''}${!pay && c.interestRate == null ? ' · no payment or rate in the report — enter your monthly payment' : ''}${c.restructured ? ' · restructured' : ''}` };
 }
 
@@ -158,8 +158,8 @@ export async function approveReport(db: DB, reportId: number, ids?: number[]) {
     for (const c of rows) {
       const p: LoanFields = JSON.parse(c.proposed);
       if (c.action === 'create') {
-        const lid = Number(db.prepare('INSERT INTO loans (name, bank, principal, currency, annual_rate, term_months, start_date, extra_monthly, notes, active, external_id, import_report_id, kind, monthly_payment, credit_limit, due_day, needs_input, balance_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(p.name, p.bank, p.principal, p.currency, p.annual_rate, p.term_months, p.start_date, p.extra_monthly, p.notes, p.active, c.external_id, reportId, p.kind, p.monthly_payment ?? null, p.credit_limit ?? null, p.due_day ?? null, p.needs_input ?? 0, p.balance_date ?? null).lastInsertRowid);
+        const lid = Number(db.prepare('INSERT INTO loans (name, bank, principal, currency, annual_rate, term_months, start_date, extra_monthly, notes, active, external_id, import_report_id, kind, monthly_payment, credit_limit, due_day, needs_input, balance_date, monthly_fee) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(p.name, p.bank, p.principal, p.currency, p.annual_rate, p.term_months, p.start_date, p.extra_monthly, p.notes, p.active, c.external_id, reportId, p.kind, p.monthly_payment ?? null, p.credit_limit ?? null, p.due_day ?? null, p.needs_input ?? 0, p.balance_date ?? null, p.monthly_fee ?? 0).lastInsertRowid);
         db.prepare('UPDATE credit_contracts SET applied_loan_id = ? WHERE id = ?').run(lid, c.id);
       } else {
         const before = db.prepare('SELECT * FROM loans WHERE id = ?').get(c.match_loan_id) as any;
@@ -167,9 +167,9 @@ export async function approveReport(db: DB, reportId: number, ids?: number[]) {
         if (c.action === 'close') db.prepare('UPDATE loans SET active = 0 WHERE id = ?').run(before.id);
         // a payment the user entered by hand is kept when the report has none
         else db.prepare(`UPDATE loans SET bank = ?, principal = ?, currency = ?, annual_rate = ?, term_months = ?, start_date = ?, active = ?, external_id = COALESCE(external_id, ?),
-            monthly_payment = COALESCE(?, monthly_payment), credit_limit = COALESCE(?, credit_limit), due_day = COALESCE(?, due_day), balance_date = COALESCE(?, balance_date), kind = ?,
+            monthly_payment = COALESCE(?, monthly_payment), monthly_fee = CASE WHEN ? > 0 THEN ? ELSE monthly_fee END, credit_limit = COALESCE(?, credit_limit), due_day = COALESCE(?, due_day), balance_date = COALESCE(?, balance_date), kind = ?,
             needs_input = CASE WHEN COALESCE(?, monthly_payment, payment_pct) IS NULL THEN ? ELSE 0 END WHERE id = ?`)
-          .run(p.bank, p.principal, p.currency, p.annual_rate, p.term_months, p.start_date, p.active, c.external_id, p.monthly_payment ?? null, p.credit_limit ?? null, p.due_day ?? null, p.balance_date ?? null, p.kind, p.monthly_payment ?? null, p.needs_input ?? 0, before.id);
+          .run(p.bank, p.principal, p.currency, p.annual_rate, p.term_months, p.start_date, p.active, c.external_id, p.monthly_payment ?? null, p.monthly_fee ?? 0, p.monthly_fee ?? 0, p.credit_limit ?? null, p.due_day ?? null, p.balance_date ?? null, p.kind, p.monthly_payment ?? null, p.needs_input ?? 0, before.id);
         db.prepare('DELETE FROM bills WHERE loan_id = ? AND paid = 0').run(before.id);
         db.prepare('UPDATE credit_contracts SET applied_loan_id = ?, before = ? WHERE id = ?').run(before.id, JSON.stringify(before), c.id);
       }
@@ -188,8 +188,8 @@ export async function revertReport(db: DB, reportId: number) {
       if (c.action === 'create') { db.prepare('DELETE FROM bills WHERE loan_id = ? AND paid = 0').run(c.applied_loan_id); db.prepare('UPDATE bills SET loan_id = NULL WHERE loan_id = ?').run(c.applied_loan_id); db.prepare('DELETE FROM loans WHERE id = ?').run(c.applied_loan_id); }
       else if (c.before) {
         const b = JSON.parse(c.before);
-        db.prepare('UPDATE loans SET bank = ?, principal = ?, currency = ?, annual_rate = ?, term_months = ?, start_date = ?, active = ?, external_id = ?, monthly_payment = ?, credit_limit = ?, due_day = ?, needs_input = ?, balance_date = ?, kind = ? WHERE id = ?')
-          .run(b.bank, b.principal, b.currency, b.annual_rate, b.term_months, b.start_date, b.active, b.external_id, b.monthly_payment ?? null, b.credit_limit ?? null, b.due_day ?? null, b.needs_input ?? 0, b.balance_date ?? null, b.kind ?? 'loan', b.id);
+        db.prepare('UPDATE loans SET bank = ?, principal = ?, currency = ?, annual_rate = ?, term_months = ?, start_date = ?, active = ?, external_id = ?, monthly_payment = ?, credit_limit = ?, due_day = ?, needs_input = ?, balance_date = ?, kind = ?, monthly_fee = ? WHERE id = ?')
+          .run(b.bank, b.principal, b.currency, b.annual_rate, b.term_months, b.start_date, b.active, b.external_id, b.monthly_payment ?? null, b.credit_limit ?? null, b.due_day ?? null, b.needs_input ?? 0, b.balance_date ?? null, b.kind ?? 'loan', b.monthly_fee ?? 0, b.id);
         db.prepare('DELETE FROM bills WHERE loan_id = ? AND paid = 0').run(b.id);
       }
     }

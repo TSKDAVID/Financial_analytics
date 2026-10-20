@@ -12,7 +12,7 @@ export interface TxRow {
 }
 export interface AccountRow { id: number; name: string; type: string; currency: string; opening_balance: number; color: string; bank: string | null; liquid: number; archived: number }
 export interface LoanRow { id: number; name: string; bank: string; principal: number; currency: string; annual_rate: number; term_months: number; start_date: string; extra_monthly: number; account_id: number | null; notes: string | null; active: number;
-  kind?: string; monthly_payment?: number | null; payment_pct?: number | null; min_payment?: number | null; credit_limit?: number | null; due_day?: number | null; needs_input?: number; balance_date?: string | null; external_id?: string | null }
+  kind?: string; monthly_payment?: number | null; payment_pct?: number | null; min_payment?: number | null; credit_limit?: number | null; due_day?: number | null; needs_input?: number; balance_date?: string | null; monthly_fee?: number; external_id?: string | null }
 export interface SubRow { id: number; name: string; kind: 'subscription' | 'bill'; amount: number; currency: string; unit: FreqUnit; interval: number; start_date: string; category_id: number | null; account_id: number | null; provider: string | null; last_used: string | null; variable: number; active: number; notes: string | null }
 export interface RecRow { id: number; kind: 'income' | 'expense'; name: string; amount: number; currency: string; account_id: number | null; category_id: number | null; notes: string | null; tags: string; unit: FreqUnit; interval: number; start_date: string; end_date: string | null; count: number | null; generated_until: string | null; auto_post: number; active: number }
 
@@ -61,7 +61,7 @@ export async function materialize(db: DB, today = todayISO()) {
   for (const s of subs) for (const d of occurrences({ unit: s.unit, interval: s.interval, start: s.start_date }, addMonths(today, -13), horizon)) insB.run(s.id, s.name, d, s.amount, s.currency);
   const loans = db.prepare('SELECT * FROM loans WHERE active = 1').all() as LoanRow[];
   const insL = db.prepare('INSERT OR IGNORE INTO bills (loan_id, name, due_date, amount, currency) VALUES (?,?,?,?,?)');
-  for (const l of loans) for (const row of amortize(loanInput(l)).rows) if (row.date <= horizon && row.date >= addMonths(today, -13)) insL.run(l.id, `${l.bank} · ${l.name}`, row.date, r2(row.payment + row.extra), l.currency);
+  for (const l of loans) for (const row of amortize(loanInput(l)).rows) if (row.date <= horizon && row.date >= addMonths(today, -13)) insL.run(l.id, `${l.bank} · ${l.name}`, row.date, r2(row.payment + row.extra + (l.monthly_fee ?? 0)), l.currency);
 }
 
 export async function payBill(db: DB, billId: number, opts: { date?: string; amount?: number; account_id?: number | null } = {}) {
@@ -122,9 +122,10 @@ export function loanStatus(db: DB, l: LoanRow, today = todayISO()) {
   const remaining = paidCount === 0 ? l.principal : sched.rows[Math.min(paidCount, sched.rows.length) - 1]?.balance ?? 0;
   const next = sched.rows[paidCount];
   const revolving = isRevolving(l);
+  const fee = l.monthly_fee ?? 0;
   const monthly = next ? next.payment : sched.monthlyPayment;
   return { ...l, revolving, monthly_payment_override: l.monthly_payment ?? null, monthly_payment: monthly, total_interest: sched.totalInterest, payoff_date: sched.neverPaysOff ? null : sched.payoffDate, paid_count: paidCount,
-    remaining, remaining_gel: r2(remaining * rate), next_payment: next ?? null, months_left: sched.rows.length - paidCount, monthly_gel: r2((monthly + (next ? l.extra_monthly : 0)) * rate),
+    remaining, remaining_gel: r2(remaining * rate), next_payment: next ?? null, months_left: sched.rows.length - paidCount, monthly_gel: r2((monthly + (next ? l.extra_monthly + fee : 0)) * rate), monthly_total: next ? r2(monthly + l.extra_monthly + fee) : 0,
     needs_input: !!l.needs_input || !!sched.needsInput, never_pays_off: !!sched.neverPaysOff,
     utilization: revolving && l.credit_limit ? r2(remaining / l.credit_limit) : null, available: revolving && l.credit_limit ? r2(Math.max(0, l.credit_limit - remaining)) : null };
 }

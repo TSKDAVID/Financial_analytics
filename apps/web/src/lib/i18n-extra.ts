@@ -43,6 +43,7 @@ export const EN_X: Record<string, string> = {
   'lx.needsInput': 'Needs your input', 'lx.needsInputHint': 'The credit report has no monthly payment for this line. Enter what you pay so forecasts and reminders are right.', 'lx.enterPayment': 'Enter payment',
   'lx.update': 'Update', 'lx.updateTitle': 'Update balance / payment', 'lx.asOf': 'As of', 'lx.note': 'Note', 'lx.history': 'Change history', 'lx.noHistory': 'No updates yet.', 'lx.undo': 'Undo', 'lx.updated': 'Updated',
   'lx.utilization': 'Used', 'lx.available': 'available', 'lx.never': 'Never — payment doesn’t cover interest', 'lx.noTerm': 'no fixed term', 'lx.payoffEst': 'Payoff estimate',
+  'lx.fee': 'Monthly fee', 'lx.feeHint': 'e.g. life insurance charged with each payment', 'lx.inclFee': 'incl. {fee} fee',
 };
 export const KA_X: Record<string, string> = {
   'nav.sync': 'ტელეფონის სინქრონი', 'sync.title': 'ტელეფონის სინქრონიზაცია', 'sync.ask': 'გსურთ სინქრონიზაცია {name}-თან?', 'sync.intro': 'სინქრონიზაციისთვის: {n} ცვლილება', 'sync.later': 'არა ახლა', 'sync.yes': 'სინქრონიზაცია',
@@ -84,4 +85,5 @@ export const KA_X: Record<string, string> = {
   'lx.needsInput': 'საჭიროებს შევსებას', 'lx.needsInputHint': 'საკრედიტო ისტორიაში ამ ხაზის ყოველთვიური გადასახადი არ არის. მიუთითეთ რამდენს იხდით.', 'lx.enterPayment': 'გადასახადის შეყვანა',
   'lx.update': 'განახლება', 'lx.updateTitle': 'ნაშთის / გადასახადის განახლება', 'lx.asOf': 'თარიღი', 'lx.note': 'შენიშვნა', 'lx.history': 'ცვლილებების ისტორია', 'lx.noHistory': 'განახლებები ჯერ არ არის.', 'lx.undo': 'გაუქმება', 'lx.updated': 'განახლდა',
   'lx.utilization': 'გამოყენებული', 'lx.available': 'ხელმისაწვდომი', 'lx.never': 'არასდროს — გადასახადი პროცენტს არ ფარავს', 'lx.noTerm': 'ვადის გარეშე', 'lx.payoffEst': 'დაფარვის შეფასება',
+  'lx.fee': 'ყოველთვიური საკომისიო', 'lx.feeHint': 'მაგ. სიცოცხლის დაზღვევა ყოველ გადახდასთან', 'lx.inclFee': 'მ.შ. {fee} საკომისიო',
 };
