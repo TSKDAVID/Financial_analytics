@@ -36,6 +36,13 @@ export const EN_X: Record<string, string> = {
   'ai.baseUrl': 'Base URL', 'ai.model': 'Model', 'ai.fallback': 'Fallback model', 'ai.key': 'API key', 'ai.keySet': 'Key saved — leave blank to keep', 'ai.test': 'Test connection', 'ai.refresh': 'Refresh models',
   'ai.privacy': 'Privacy: only the description, amount, currency and direction of low-confidence rows are sent — no names, account numbers or balances. Local providers never leave this computer; Groq sends them to the cloud. Keys are stored only in your local database and never shown or logged.',
   'ai.threshold': 'Ask AI below confidence', 'ai.timeout': 'Timeout (seconds)',
+  'lx.kind': 'Type', 'lx.kind.loan': 'Loan', 'lx.kind.mortgage': 'Mortgage', 'lx.kind.installment': 'Installment', 'lx.kind.credit_card': 'Credit card', 'lx.kind.overdraft': 'Overdraft', 'lx.kind.credit_line': 'Credit line', 'lx.kind.other': 'Other',
+  'lx.balance': 'Current balance', 'lx.limit': 'Credit limit', 'lx.dueDay': 'Payment due day', 'lx.payment': 'Monthly payment', 'lx.pinned': 'pinned', 'lx.pinTerm': 'Keep term fixed', 'lx.pinPayment': 'Keep payment fixed',
+  'lx.linked': 'Term and payment are linked: change one and the other is recalculated from the balance and rate. The one you changed last is pinned.',
+  'lx.mode': 'How you pay', 'lx.mode.fixed': 'Fixed amount', 'lx.mode.pct': '% of balance', 'lx.mode.term': 'Pay off in N months', 'lx.pct': '% of balance each month', 'lx.minPay': 'Minimum payment',
+  'lx.needsInput': 'Needs your input', 'lx.needsInputHint': 'The credit report has no monthly payment for this line. Enter what you pay so forecasts and reminders are right.', 'lx.enterPayment': 'Enter payment',
+  'lx.update': 'Update', 'lx.updateTitle': 'Update balance / payment', 'lx.asOf': 'As of', 'lx.note': 'Note', 'lx.history': 'Change history', 'lx.noHistory': 'No updates yet.', 'lx.undo': 'Undo', 'lx.updated': 'Updated',
+  'lx.utilization': 'Used', 'lx.available': 'available', 'lx.never': 'Never — payment doesn’t cover interest', 'lx.noTerm': 'no fixed term', 'lx.payoffEst': 'Payoff estimate',
 };
 export const KA_X: Record<string, string> = {
   'nav.sync': 'ტელეფონის სინქრონი', 'sync.title': 'ტელეფონის სინქრონიზაცია', 'sync.ask': 'გსურთ სინქრონიზაცია {name}-თან?', 'sync.intro': 'სინქრონიზაციისთვის: {n} ცვლილება', 'sync.later': 'არა ახლა', 'sync.yes': 'სინქრონიზაცია',
@@ -70,4 +77,11 @@ export const KA_X: Record<string, string> = {
   'ai.title': 'AI კატეგორიზაცია', 'ai.enabled': 'AI დაბალი სანდოობის რიგებისთვის', 'ai.provider': 'პროვაიდერი', 'ai.baseUrl': 'მისამართი', 'ai.model': 'მოდელი', 'ai.fallback': 'სარეზერვო მოდელი', 'ai.key': 'API გასაღები',
   'ai.keySet': 'გასაღები შენახულია', 'ai.test': 'კავშირის შემოწმება', 'ai.refresh': 'მოდელების განახლება', 'ai.threshold': 'სანდოობის ზღვარი', 'ai.timeout': 'ლოდინი (წამი)',
   'ai.privacy': 'კონფიდენციალურობა: იგზავნება მხოლოდ დაბალი სანდოობის რიგების აღწერა, თანხა, ვალუტა და მიმართულება. ლოკალური პროვაიდერები კომპიუტერს არ ტოვებს; Groq ღრუბელში აგზავნის. გასაღები ინახება მხოლოდ ლოკალურად.',
+  'lx.kind': 'ტიპი', 'lx.kind.loan': 'სესხი', 'lx.kind.mortgage': 'იპოთეკა', 'lx.kind.installment': 'განვადება', 'lx.kind.credit_card': 'საკრედიტო ბარათი', 'lx.kind.overdraft': 'ოვერდრაფტი', 'lx.kind.credit_line': 'საკრედიტო ხაზი', 'lx.kind.other': 'სხვა',
+  'lx.balance': 'მიმდინარე ნაშთი', 'lx.limit': 'ლიმიტი', 'lx.dueDay': 'გადახდის დღე', 'lx.payment': 'ყოველთვიური გადასახადი', 'lx.pinned': 'დაფიქსირებული', 'lx.pinTerm': 'ვადის დაფიქსირება', 'lx.pinPayment': 'გადასახადის დაფიქსირება',
+  'lx.linked': 'ვადა და გადასახადი დაკავშირებულია: ერთის შეცვლისას მეორე ხელახლა გამოითვლება. ბოლოს შეცვლილი ფიქსირდება.',
+  'lx.mode': 'როგორ იხდით', 'lx.mode.fixed': 'ფიქსირებული თანხა', 'lx.mode.pct': 'ნაშთის %', 'lx.mode.term': 'დაფარვა N თვეში', 'lx.pct': 'ნაშთის % ყოველთვე', 'lx.minPay': 'მინიმალური გადასახადი',
+  'lx.needsInput': 'საჭიროებს შევსებას', 'lx.needsInputHint': 'საკრედიტო ისტორიაში ამ ხაზის ყოველთვიური გადასახადი არ არის. მიუთითეთ რამდენს იხდით.', 'lx.enterPayment': 'გადასახადის შეყვანა',
+  'lx.update': 'განახლება', 'lx.updateTitle': 'ნაშთის / გადასახადის განახლება', 'lx.asOf': 'თარიღი', 'lx.note': 'შენიშვნა', 'lx.history': 'ცვლილებების ისტორია', 'lx.noHistory': 'განახლებები ჯერ არ არის.', 'lx.undo': 'გაუქმება', 'lx.updated': 'განახლდა',
+  'lx.utilization': 'გამოყენებული', 'lx.available': 'ხელმისაწვდომი', 'lx.never': 'არასდროს — გადასახადი პროცენტს არ ფარავს', 'lx.noTerm': 'ვადის გარეშე', 'lx.payoffEst': 'დაფარვის შეფასება',
 };

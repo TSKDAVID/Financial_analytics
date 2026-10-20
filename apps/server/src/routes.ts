@@ -5,7 +5,7 @@ import type { DB } from './schema';
 import { getSetting, setSetting, seedBuiltins } from './schema';
 import { getRate, latestRates, fetchNbg, SUPPORTED } from './rates';
 import {
-  insertTransaction, materialize, payBill, unpayBill, catTree, accountBalances, loanStatus, subscriptionInfo, duplicateSubscriptions,
+  insertTransaction, materialize, payBill, unpayBill, catTree, accountBalances, loanStatus, applyLoanUpdate, subscriptionInfo, duplicateSubscriptions,
   budgetStatus, goalStatus, loanInput, type LoanRow, type SubRow, periodSummary,
 } from './services';
 import { dashboard, forecastData, riskData, insights, anomaliesList, utilitiesData } from './analytics';
@@ -34,7 +34,7 @@ const txSchema = z.object({
 const accountSchema = z.object({ name: z.string().min(1).max(80), type: z.enum(['cash', 'bank', 'card', 'savings']), currency: currency.default('GEL'), opening_balance: money.default(0), color: z.string().default('#6366f1'), bank: z.string().max(80).nullable().optional(), liquid: z.boolean().default(true), archived: z.boolean().default(false) });
 const categorySchema = z.object({ name: z.string().min(1).max(60), kind: z.enum(['income', 'expense']), parent_id: optId, color: z.string().default('#64748b'), icon: z.string().default('circle'), essential: z.boolean().default(false), archived: z.boolean().default(false) });
 const recurringSchema = z.object({ kind: z.enum(['income', 'expense']), name: z.string().min(1).max(100), amount: money.positive(), currency: currency.default('GEL'), account_id: optId, category_id: optId, notes: z.string().nullable().optional(), tags: z.array(z.string()).default([]), unit, interval: z.coerce.number().int().min(1).max(1000), start_date: date, end_date: date.nullable().optional(), count: z.coerce.number().int().positive().nullable().optional(), auto_post: z.boolean().default(true), active: z.boolean().default(true) });
-const loanSchema = z.object({ name: z.string().min(1).max(100), bank: z.string().min(1).max(80), principal: money.positive(), currency: currency.default('GEL'), annual_rate: z.coerce.number().min(0).max(200), term_months: z.coerce.number().int().min(1).max(600), start_date: date, extra_monthly: money.nonnegative().default(0), account_id: optId, notes: z.string().nullable().optional(), active: z.boolean().default(true) });
+const loanSchema = z.object({ kind: z.enum(['loan', 'mortgage', 'installment', 'credit_card', 'overdraft', 'credit_line', 'other']).default('loan'), monthly_payment: money.positive().nullable().optional(), payment_pct: z.coerce.number().min(0.1).max(100).nullable().optional(), min_payment: money.nonnegative().nullable().optional(), credit_limit: money.nonnegative().nullable().optional(), due_day: z.coerce.number().int().min(1).max(31).nullable().optional(), needs_input: z.coerce.number().int().min(0).max(1).optional(), balance_date: date.nullable().optional(), name: z.string().min(1).max(100), bank: z.string().min(1).max(80), principal: money.nonnegative(), currency: currency.default('GEL'), annual_rate: z.coerce.number().min(0).max(200), term_months: z.coerce.number().int().min(0).max(600).default(0), start_date: date, extra_monthly: money.nonnegative().default(0), account_id: optId, notes: z.string().nullable().optional(), active: z.boolean().default(true) });
 const subSchema = z.object({ name: z.string().min(1).max(100), kind: z.enum(['subscription', 'bill']).default('subscription'), amount: money.nonnegative(), currency: currency.default('GEL'), unit: unit.default('month'), interval: z.coerce.number().int().min(1).default(1), start_date: date, category_id: optId, account_id: optId, provider: z.string().nullable().optional(), last_used: date.nullable().optional(), variable: z.boolean().default(false), active: z.boolean().default(true), notes: z.string().nullable().optional() });
 const budgetSchema = z.object({ category_id: id, amount: money.positive(), rollover: z.boolean().default(false) });
 const goalSchema = z.object({ name: z.string().min(1).max(100), target: money.positive(), saved: money.nonnegative().default(0), target_date: date.nullable().optional(), color: z.string().default('#10b981'), icon: z.string().default('target'), account_id: optId });
@@ -228,7 +228,29 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
     const s = extraPaymentSavings({ principal: r.principal, annualRatePct: r.annual_rate, termMonths: r.term_months, startDate: r.start_date }, r.extra_monthly);
     return { schedule: r.extra_monthly > 0 ? s.withExtra : s.base, base: s.base, interestSaved: s.interestSaved, monthsSaved: s.monthsSaved };
   });
-  crud('loans', 'loans', loanSchema, async () => { db.prepare('DELETE FROM bills WHERE loan_id IS NOT NULL AND paid = 0').run(); await refresh(); });
+  // quick "Update" — new balance / payment as of a date; keeps a history and re-bases the schedule from there
+  app.get('/api/loans/:id/updates', async (req) => (db.prepare('SELECT * FROM loan_updates WHERE loan_id = ? ORDER BY date DESC, id DESC').all(parse(id, P(req).id)) as any[]).map((u) => ({ ...u, prev: JSON.parse(u.prev) })));
+  app.post('/api/loans/:id/update', async (req) => {
+    const lid = parse(id, P(req).id);
+    const l = db.prepare('SELECT * FROM loans WHERE id = ?').get(lid) as LoanRow | undefined; if (!l) throw notFound();
+    const b = parse(z.object({ date: date.default(todayISO()), balance: money.nonnegative().optional(), monthly_payment: money.positive().nullable().optional(), payment_pct: z.coerce.number().min(0.1).max(100).nullable().optional(), annual_rate: z.coerce.number().min(0).max(200).optional(), due_day: z.coerce.number().int().min(1).max(31).nullable().optional(), note: z.string().max(300).nullable().optional() }), req.body);
+    applyLoanUpdate(db, l, b);
+    await refresh();
+    return loanStatus(db, db.prepare('SELECT * FROM loans WHERE id = ?').get(lid) as LoanRow);
+  });
+  app.post('/api/loan-updates/:id/undo', async (req) => {
+    const u = db.prepare('SELECT * FROM loan_updates WHERE id = ?').get(parse(id, P(req).id)) as any; if (!u) throw notFound();
+    const later = db.prepare('SELECT COUNT(*) AS c FROM loan_updates WHERE loan_id = ? AND id > ?').get(u.loan_id, u.id) as { c: number };
+    if (later.c) throw Object.assign(new Error('Only the latest update can be undone'), { statusCode: 400 });
+    const prev = JSON.parse(u.prev);
+    db.transaction(() => {
+      db.prepare('UPDATE loans SET principal = @principal, start_date = @start_date, term_months = @term_months, monthly_payment = @monthly_payment, payment_pct = @payment_pct, annual_rate = @annual_rate, due_day = @due_day, needs_input = @needs_input, balance_date = @balance_date WHERE id = @id').run({ ...prev, id: u.loan_id });
+      db.prepare('DELETE FROM loan_updates WHERE id = ?').run(u.id);
+      db.prepare('DELETE FROM bills WHERE loan_id = ? AND paid = 0').run(u.loan_id);
+    })();
+    await refresh(); return { ok: true };
+  });
+  crud('loans', 'loans', loanSchema, async () => { db.prepare("UPDATE loans SET needs_input = 0 WHERE needs_input = 1 AND (monthly_payment IS NOT NULL OR payment_pct IS NOT NULL OR (kind IN ('credit_card','overdraft','credit_line') AND term_months > 0) OR (kind NOT IN ('credit_card','overdraft','credit_line') AND annual_rate > 0))").run(); db.prepare('DELETE FROM bills WHERE loan_id IS NOT NULL AND paid = 0').run(); await refresh(); });
 
   // ---------- subscriptions & bills ----------
   app.get('/api/subscriptions', async () => {

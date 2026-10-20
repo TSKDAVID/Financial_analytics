@@ -2,7 +2,7 @@ import {
   addDays, addMonths, amortize, balanceAsOf, monthKey, occurrences, startOfMonth, endOfMonth, todayISO, nextOccurrence,
   perMonthFactor, type RecurringFlow, type FreqUnit, type LoanInput, mean, stdev,
 } from '@fa/core';
-import type { DB } from './schema';
+import { REVOLVING_KINDS, type DB } from './schema';
 import { getRate, latestRates } from './rates';
 
 export interface TxRow {
@@ -11,12 +11,25 @@ export interface TxRow {
   tags: string; recurring_id: number | null; loan_id: number | null; subscription_id: number | null; rate_manual: number;
 }
 export interface AccountRow { id: number; name: string; type: string; currency: string; opening_balance: number; color: string; bank: string | null; liquid: number; archived: number }
-export interface LoanRow { id: number; name: string; bank: string; principal: number; currency: string; annual_rate: number; term_months: number; start_date: string; extra_monthly: number; account_id: number | null; notes: string | null; active: number }
+export interface LoanRow { id: number; name: string; bank: string; principal: number; currency: string; annual_rate: number; term_months: number; start_date: string; extra_monthly: number; account_id: number | null; notes: string | null; active: number;
+  kind?: string; monthly_payment?: number | null; payment_pct?: number | null; min_payment?: number | null; credit_limit?: number | null; due_day?: number | null; needs_input?: number; balance_date?: string | null; external_id?: string | null }
 export interface SubRow { id: number; name: string; kind: 'subscription' | 'bill'; amount: number; currency: string; unit: FreqUnit; interval: number; start_date: string; category_id: number | null; account_id: number | null; provider: string | null; last_used: string | null; variable: number; active: number; notes: string | null }
 export interface RecRow { id: number; kind: 'income' | 'expense'; name: string; amount: number; currency: string; account_id: number | null; category_id: number | null; notes: string | null; tags: string; unit: FreqUnit; interval: number; start_date: string; end_date: string | null; count: number | null; generated_until: string | null; auto_post: number; active: number }
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
-export const loanInput = (l: LoanRow): LoanInput => ({ principal: l.principal, annualRatePct: l.annual_rate, termMonths: l.term_months, startDate: l.start_date, extraMonthly: l.extra_monthly });
+export const isRevolving = (l: Pick<LoanRow, 'kind'>) => REVOLVING_KINDS.includes(l.kind ?? 'loan');
+export const loanInput = (l: LoanRow): LoanInput => ({ principal: l.principal, annualRatePct: l.annual_rate, termMonths: l.term_months, startDate: l.start_date, extraMonthly: l.extra_monthly,
+  payment: l.monthly_payment ?? null, paymentPct: l.payment_pct ?? null, minPayment: l.min_payment ?? null, revolving: isRevolving(l) });
+/** Next date on `day` of the month strictly after `after` (clamped to month length). */
+export function nextDueDate(after: string, day: number): string {
+  const [y, m] = after.split('-').map(Number);
+  for (let k = 0; k < 3; k++) {
+    const dt = new Date(Date.UTC(y, m - 1 + k, 1)); const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate();
+    const iso = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(day, last)).padStart(2, '0')}`;
+    if (iso > after) return iso;
+  }
+  return after;
+}
 
 export async function insertTransaction(db: DB, t: Omit<Partial<TxRow>, 'tags' | 'rate_manual'> & { rate_manual?: boolean | number; kind: TxRow['kind']; amount: number; date: string; currency?: string; tags?: string | string[] }) {
   const currency = t.currency ?? 'GEL';
@@ -103,13 +116,17 @@ export function loanStatus(db: DB, l: LoanRow, today = todayISO()) {
   const rates = latestRates(db), rate = rates[l.currency] ?? 1;
   const sched = amortize(loanInput(l));
   const st = balanceAsOf(loanInput(l), addDays(today, 0));
-  // bills paid count overrides time-based estimate
-  const paid = (db.prepare('SELECT COUNT(*) AS c FROM bills WHERE loan_id = ? AND paid = 1').get(l.id) as { c: number }).c;
+  // paid bills (since the last balance update) override the time-based estimate
+  const paid = (db.prepare('SELECT COUNT(*) AS c FROM bills WHERE loan_id = ? AND paid = 1 AND due_date >= ?').get(l.id, l.start_date) as { c: number }).c;
   const paidCount = Math.max(paid, 0) || st.paidCount;
   const remaining = paidCount === 0 ? l.principal : sched.rows[Math.min(paidCount, sched.rows.length) - 1]?.balance ?? 0;
   const next = sched.rows[paidCount];
-  return { ...l, monthly_payment: sched.monthlyPayment, total_interest: sched.totalInterest, payoff_date: sched.payoffDate, paid_count: paidCount,
-    remaining, remaining_gel: r2(remaining * rate), next_payment: next ?? null, months_left: sched.rows.length - paidCount, monthly_gel: r2((sched.monthlyPayment + l.extra_monthly) * rate) };
+  const revolving = isRevolving(l);
+  const monthly = next ? next.payment : sched.monthlyPayment;
+  return { ...l, revolving, monthly_payment_override: l.monthly_payment ?? null, monthly_payment: monthly, total_interest: sched.totalInterest, payoff_date: sched.neverPaysOff ? null : sched.payoffDate, paid_count: paidCount,
+    remaining, remaining_gel: r2(remaining * rate), next_payment: next ?? null, months_left: sched.rows.length - paidCount, monthly_gel: r2((monthly + (next ? l.extra_monthly : 0)) * rate),
+    needs_input: !!l.needs_input || !!sched.needsInput, never_pays_off: !!sched.neverPaysOff,
+    utilization: revolving && l.credit_limit ? r2(remaining / l.credit_limit) : null, available: revolving && l.credit_limit ? r2(Math.max(0, l.credit_limit - remaining)) : null };
 }
 
 /** Future cash flows used for forecasting (signed GEL). */
@@ -124,7 +141,7 @@ export function futureFlows(db: DB, today = todayISO()): RecurringFlow[] {
   }
   for (const l of db.prepare('SELECT * FROM loans WHERE active = 1').all() as LoanRow[]) {
     const st = loanStatus(db, l, today);
-    if (st.next_payment && st.months_left > 0) out.push({ rule: { unit: 'month', interval: 1, start: st.next_payment.date, count: st.months_left }, amount: -st.monthly_gel });
+    if (st.next_payment && st.months_left > 0) out.push({ rule: { unit: 'month', interval: 1, start: st.next_payment.date, count: st.never_pays_off ? undefined : st.months_left }, amount: -st.monthly_gel });
   }
   return out;
 }
@@ -205,4 +222,32 @@ export function goalStatus(db: DB, today = todayISO()) {
     const months = g.target_date ? Math.max(1, (Number(g.target_date.slice(0, 4)) - Number(today.slice(0, 4))) * 12 + Number(g.target_date.slice(5, 7)) - Number(today.slice(5, 7))) : null;
     return { ...g, pct: g.target > 0 ? Math.min(1, g.saved / g.target) : 0, remaining: r2(left), months_left: months, required_monthly: months ? r2(left / months) : null };
   });
+}
+
+/**
+ * Re-base a loan on a new balance (and optionally a new payment/rate) as of `date`. The previous values are stored
+ * in loan_updates so the change shows in the history and can be undone. Paid bills before the date stay as history.
+ */
+export function applyLoanUpdate(db: DB, l: LoanRow, b: { date: string; balance?: number; monthly_payment?: number | null; payment_pct?: number | null; annual_rate?: number; due_day?: number | null; note?: string | null }) {
+  const st = loanStatus(db, l, b.date);
+  const prev = { principal: l.principal, start_date: l.start_date, term_months: l.term_months, monthly_payment: l.monthly_payment ?? null, payment_pct: l.payment_pct ?? null, annual_rate: l.annual_rate, due_day: l.due_day ?? null, needs_input: l.needs_input ?? 0, balance_date: l.balance_date ?? null };
+  const revolving = isRevolving(l);
+  const balance = b.balance ?? st.remaining;
+  const dueDay = b.due_day !== undefined ? b.due_day : l.due_day ?? null;
+  // first payment after the update date: the due day for cards, otherwise the loan's own payment day
+  const day = dueDay ?? Number((st.next_payment?.date ?? l.start_date).slice(8, 10));
+  const start = nextDueDate(b.date, day);
+  const monthly = b.monthly_payment !== undefined ? b.monthly_payment : l.monthly_payment ?? null;
+  const pct = b.payment_pct !== undefined ? b.payment_pct : l.payment_pct ?? null;
+  // without an explicit payment, an amortizing loan keeps its remaining term
+  // without an explicit payment the loan keeps its remaining term (a pinned payoff term for cards)
+  const term = Math.max(revolving ? 0 : 1, st.months_left || (revolving ? 0 : l.term_months));
+  const needs = revolving && !monthly && !pct && !term ? 1 : 0;
+  db.transaction(() => {
+    db.prepare('INSERT INTO loan_updates (loan_id, date, balance, monthly_payment, payment_pct, annual_rate, prev, note) VALUES (?,?,?,?,?,?,?,?)')
+      .run(l.id, b.date, balance, monthly, pct, b.annual_rate ?? l.annual_rate, JSON.stringify(prev), b.note ?? null);
+    db.prepare('UPDATE loans SET principal = ?, start_date = ?, term_months = ?, monthly_payment = ?, payment_pct = ?, annual_rate = ?, due_day = ?, needs_input = ?, balance_date = ? WHERE id = ?')
+      .run(balance, start, term, monthly, pct, b.annual_rate ?? l.annual_rate, dueDay, needs, b.date, l.id);
+    db.prepare('DELETE FROM bills WHERE loan_id = ? AND paid = 0').run(l.id);
+  })();
 }

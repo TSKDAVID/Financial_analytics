@@ -102,10 +102,31 @@ export function initDb(db: DB) {
   seedBuiltins(db);
   migrateImports(db);
   migrateCredit(db);
+  migrateLoans(db);
   migrateSync(db);
   // v1.2: minimum balance is no longer pre-set (old untouched default was 300)
   if (!getSetting(db, 'minBalanceMigrated')) { if (getSetting(db, 'minBalance') === '300') setSetting(db, 'minBalance', ''); setSetting(db, 'minBalanceMigrated', '1'); }
   return db;
+}
+
+/** v1.3: monthly-payment override, revolving credit lines (cards/overdrafts) and a balance/payment update history. */
+export const REVOLVING_KINDS = ['credit_card', 'overdraft', 'credit_line'];
+export function migrateLoans(db: DB) {
+  const cols = (db.prepare('PRAGMA table_info(loans)').all() as { name: string }[]).map((c) => c.name);
+  const add = (c: string, def: string) => { if (!cols.includes(c)) db.exec(`ALTER TABLE loans ADD COLUMN ${c} ${def}`); };
+  add('monthly_payment', 'REAL'); add('payment_pct', 'REAL'); add('min_payment', 'REAL'); add('credit_limit', 'REAL');
+  add('due_day', 'INTEGER'); add('needs_input', 'INTEGER NOT NULL DEFAULT 0'); add('balance_date', 'TEXT');
+  db.exec(`CREATE TABLE IF NOT EXISTS loan_updates (
+    id INTEGER PRIMARY KEY, loan_id INTEGER NOT NULL REFERENCES loans(id) ON DELETE CASCADE, date TEXT NOT NULL,
+    balance REAL, monthly_payment REAL, payment_pct REAL, annual_rate REAL, prev TEXT NOT NULL DEFAULT '{}', note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+  if (!getSetting(db, 'loansV13')) {
+    // revolving lines imported before v1.3 were modelled as 12-month 0% loans with a guessed payment: flag them for review
+    // their 12-month term was a guess, not from the report
+    db.prepare(`UPDATE loans SET term_months = 0 WHERE kind IN ('credit_card','overdraft') AND import_report_id IS NOT NULL AND monthly_payment IS NULL AND payment_pct IS NULL`).run();
+    db.prepare(`UPDATE loans SET needs_input = 1, balance_date = COALESCE(balance_date, start_date) WHERE kind IN ('credit_card','overdraft') AND monthly_payment IS NULL AND payment_pct IS NULL`).run();
+    setSetting(db, 'loansV13', '1');
+  }
 }
 
 export function seedBuiltins(db: DB) {

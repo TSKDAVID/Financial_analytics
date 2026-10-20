@@ -1,3 +1,4 @@
+import { monthlyPayment } from '@fa/core';
 import { useRef, useState } from 'react';
 import { Upload, Loader2, Check, Undo2, Trash2, ShieldCheck, Sparkles } from 'lucide-react';
 import { useT } from '../lib/i18n';
@@ -77,7 +78,7 @@ function ReportView({ id }: { id: number }) {
 
 function ContractRow({ c, editing, onEdit, run }: { c: any; editing: boolean; onEdit: () => void; run: (fn: () => Promise<any>, m?: string) => Promise<any> }) {
   const t = useT(); const x = c.data; const p = c.proposed;
-  const [f, setF] = useState({ term_months: String(p.term_months), annual_rate: String(p.annual_rate), principal: String(p.principal), start_date: p.start_date, name: p.name });
+  const [f, setF] = useState({ monthly_payment: p.monthly_payment != null ? String(p.monthly_payment) : '', term_months: String(p.term_months), annual_rate: String(p.annual_rate), principal: String(p.principal), start_date: p.start_date, name: p.name });
   const locked = !!c.applied_loan_id;
   return <>
     <tr className={cn('border-b last:border-0', c.excluded && 'opacity-50', locked && 'bg-success/5')}>
@@ -85,7 +86,9 @@ function ContractRow({ c, editing, onEdit, run }: { c: any; editing: boolean; on
       <td className={td}>{t('cr.type.' + c.type)}</td>
       <td className={cn(td, 'num whitespace-nowrap')}>{money(x.originalAmount ?? 0, x.currency)}</td>
       <td className={cn(td, 'num whitespace-nowrap')}>{money(x.balance ?? 0, x.currency)}</td>
-      <td className={cn(td, 'num whitespace-nowrap')}>{x.monthlyPayment ? money(x.monthlyPayment, x.currency) : '—'}</td>
+      <td className={cn(td, 'num whitespace-nowrap', p.needs_input && c.active && 'bg-warning/15')}>{p.monthly_payment ? money(p.monthly_payment, x.currency)
+        : p.needs_input ? (c.active ? <Badge tone="warning">{t('lx.needsInput')}</Badge> : '—')
+        : p.term_months > 0 && c.active ? <span title={p.notes}>≈{money(monthlyPayment(p.principal, p.annual_rate, p.term_months), x.currency)}<div className="text-[10px] text-muted-foreground">{p.term_months} {t('unit.month')}</div></span> : '—'}</td>
       <td className={cn(td, 'whitespace-nowrap')}>{x.interestRate != null ? `${x.interestRate}%` : p.annual_rate ? `≈${p.annual_rate}%` : '—'}</td>
       <td className={td}>{x.installmentsLeft != null ? `${x.installmentsLeft}/${x.installmentsTotal ?? x.termMonths}` : x.termMonths ?? '—'}</td>
       <td className={cn(td, 'whitespace-nowrap text-xs')}>{dateFmt(x.startDate)} → {dateFmt(x.endDate)}</td>
@@ -97,9 +100,9 @@ function ContractRow({ c, editing, onEdit, run }: { c: any; editing: boolean; on
         <Button size="sm" variant="ghost" onClick={() => run(() => put(`/credit-contracts/${c.id}`, { excluded: !c.excluded }))}>{c.excluded ? t('imp.include') : t('imp.excluded')}</Button></>}</td>
     </tr>
     {editing && !locked && <tr className="border-b bg-muted/30"><td colSpan={11} className="p-3"><div className="flex flex-wrap items-end gap-2 text-xs">
-      {(['name', 'principal', 'annual_rate', 'term_months', 'start_date'] as const).map((k) => <label key={k} className="space-y-1"><span className="text-muted-foreground">{t('cr.f.' + k)}</span>
+      {(['name', 'principal', 'annual_rate', 'term_months', 'monthly_payment', 'start_date'] as const).map((k) => <label key={k} className="space-y-1"><span className="text-muted-foreground">{k === 'monthly_payment' ? t('lx.payment') : t('cr.f.' + k)}</span>
         <Input className="h-8 w-32" type={k === 'start_date' ? 'date' : k === 'name' ? 'text' : 'number'} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></label>)}
-      <Button size="sm" onClick={() => run(() => put(`/credit-contracts/${c.id}`, { proposed: { name: f.name, start_date: f.start_date, principal: Number(f.principal), annual_rate: Number(f.annual_rate), term_months: Math.round(Number(f.term_months)) } }), t('common.saved')).then(onEdit)}>{t('common.save')}</Button>
+      <Button size="sm" onClick={() => run(() => put(`/credit-contracts/${c.id}`, { proposed: { name: f.name, start_date: f.start_date, principal: Number(f.principal), annual_rate: Number(f.annual_rate), term_months: Math.round(Number(f.term_months)), monthly_payment: Number(f.monthly_payment) > 0 ? Number(f.monthly_payment) : null } }), t('common.saved')).then(onEdit)}>{t('common.save')}</Button>
       <span className="text-muted-foreground">{p.notes}</span></div></td></tr>}
   </>;
 }

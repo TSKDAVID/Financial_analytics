@@ -30,4 +30,10 @@ export function shiftPeriod(p: Period, dir: number): Period {
 export const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#ec4899', '#84cc16', '#f97316', '#64748b'];
 export const axis = { stroke: 'hsl(var(--muted-foreground))', fontSize: 11, tickLine: false, axisLine: false } as const;
 export const grid = { stroke: 'hsl(var(--border))', strokeDasharray: '3 3', vertical: false } as const;
-export const tooltipStyle = { contentStyle: { background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 10, fontSize: 12 }, labelStyle: { color: 'hsl(var(--foreground))', fontWeight: 600 } };
+/** Recharts tooltip themed for light & dark: card background, foreground text for label AND items (Pie items default to black). */
+export const tooltipStyle = {
+  contentStyle: { background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 10, fontSize: 12, color: 'hsl(var(--foreground))', boxShadow: '0 8px 24px rgb(0 0 0 / 0.18)' },
+  labelStyle: { color: 'hsl(var(--foreground))', fontWeight: 600 },
+  itemStyle: { color: 'hsl(var(--foreground))' },
+  wrapperStyle: { outline: 'none', zIndex: 50 },
+};

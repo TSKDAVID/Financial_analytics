@@ -49,7 +49,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "expo-sqlite",
+      "expo-sharing"
     ],
     "scheme": "finance",
     "extra": {

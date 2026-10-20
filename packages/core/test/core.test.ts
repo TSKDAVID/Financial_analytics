@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { occurrences, nextOccurrence, perMonthFactor, amortize, extraPaymentSavings, monthlyPayment, balanceAsOf,
+import { termForPayment, occurrences, nextOccurrence, perMonthFactor, amortize, extraPaymentSavings, monthlyPayment, balanceAsOf,
   toGel, convert, normalizeNbgRate, rateOnOrBefore, forecast, dailyProjection, healthScore, dtiLevel, stressTest,
   detectAnomalies, isSpike, suggestCategory, DEFAULT_KEYWORDS, addMonths, seasonality } from '../src';
 
@@ -129,3 +129,28 @@ describe('insights', () => {
     expect(seasonality([{ month: '2025-01', value: 200 }, { month: '2025-02', value: 180 }, { month: '2025-06', value: 50 }, { month: '2025-07', value: 40 }])).toBe('winter');
   });
 });
+
+describe('payment override & revolving credit', () => {
+  const base = { principal: 1200, annualRatePct: 12, termMonths: 12, startDate: '2026-01-15' };
+  it('derives term and payoff from a fixed payment', () => {
+    const r = amortize({ ...base, payment: 300 });
+    expect(r.monthlyPayment).toBe(300); expect(r.months).toBe(5); expect(r.rows.at(-1)!.balance).toBe(0); expect(r.neverPaysOff).toBeUndefined();
+  });
+  it('flags payments that do not cover interest', () => {
+    expect(amortize({ ...base, payment: 10 }).neverPaysOff).toBe(true);
+  });
+  it('revolving lines need a payment and support % of balance with a minimum', () => {
+    expect(amortize({ ...base, termMonths: 0, revolving: true })).toMatchObject({ needsInput: true, rows: [] });
+    expect(amortize({ ...base, annualRatePct: 0, termMonths: 24, revolving: true }).monthlyPayment).toBe(50); // pinned payoff term
+    const r = amortize({ ...base, annualRatePct: 0, revolving: true, paymentPct: 10, minPayment: 50 });
+    expect(r.rows[0].payment).toBe(120); expect(r.rows.at(-1)!.balance).toBe(0); expect(r.rows.some((x) => x.payment === 50)).toBe(true);
+  });
+});
+describe('term <-> payment', () => {
+  it('is the inverse of monthlyPayment', () => {
+    expect(termForPayment(1034.23, 0, 1034.23 / 24)).toBe(24);
+    expect(termForPayment(10000, 12, monthlyPayment(10000, 12, 36))).toBe(36);
+    expect(termForPayment(1000, 24, 10)).toBe(Infinity);
+  });
+});
+

@@ -10,7 +10,7 @@ export type ContractType = 'loan' | 'credit_card' | 'overdraft' | 'installment' 
 export interface ScheduleRow { month: string; balance: number | null; principal: number | null; overdue: number | null }
 export interface CreditContract {
   externalId: string | null; creditor: string | null; type: ContractType; typeLabel: string | null; status: string | null; active: boolean;
-  currency: string; originalAmount: number | null; balance: number | null; principalDue: number | null; monthlyPayment: number | null;
+  currency: string; originalAmount: number | null; balance: number | null; principalDue: number | null; monthlyPayment: number | null; undrawn: number | null;
   interestRate: number | null; termMonths: number | null; startDate: string | null; endDate: string | null; closedDate: string | null; nextPaymentDate: string | null;
   overdueAmount: number; overdueDays: number; maxOverdueDays: number; penalty: number; installmentsTotal: number | null; installmentsLeft: number | null;
   restructured: boolean; schedule: ScheduleRow[]; missing: string[]; raw: string;
@@ -104,7 +104,9 @@ function parseContract(lines: Line[]): CreditContract {
     currency: curField?.match(CUR)?.[1] ?? raw.match(CUR)?.[1] ?? 'GEL',
     originalAmount: original, balance,
     principalDue: amt(/^სესხის მიმდინარე გადასახდელი ძირითადი( თანხა)?$/),
-    monthlyPayment: amt(/^სტანდარტული შენატანის ოდენობა$/) || amt(/^გრაფიკით განსაზღვრული მაქსიმალური შენატანი$/),
+    // only what the report states; 0 / missing means "not reported" (cards often have none)
+    monthlyPayment: amt(/^სტანდარტული შენატანის ოდენობა$/) || amt(/^გრაფიკით განსაზღვრული მაქსიმალური შენატანი$/) || null,
+    undrawn: amt(/^სესხის მიმდინარე აუთვისებელი თანხა$/),
     interestRate: rateRaw ? num(rateRaw) : null,
     termMonths: amt(/^სესხის საკონტრაქტო ვადა \(თვეებში\)$/),
     startDate: date(field(lines, /^სესხის გაცემის თარიღი$/, isDate)),

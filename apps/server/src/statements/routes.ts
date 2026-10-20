@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { b64ToBytes } from './lines';
 import type { DB } from '../schema';
 import { importPdf, updateRow, approve, revert, discard, analyze, runAi, detectDuplicates, learnedMap } from './service';
 import { aiConfig, testConnection, type Provider } from './ai';
@@ -17,7 +18,7 @@ export function importRoutes(app: FastifyInstance, db: DB) {
   app.get('/api/imports', async () => (db.prepare("SELECT * FROM import_batches ORDER BY id DESC").all() as any[]).map((b) => ({ ...b, warnings: JSON.parse(b.warnings || '[]'), stats: stats(b.id) })));
   app.post('/api/imports', async (req) => {
     const body = parse(z.object({ filename: z.string().min(1).max(255), data: z.string().min(10), account_id: z.number().int().positive().nullable().optional(), ai: z.boolean().optional() }), req.body);
-    const bytes = Uint8Array.from(Buffer.from(body.data.replace(/^data:[^,]*,/, ''), 'base64'));
+    const bytes = b64ToBytes(body.data);
     const id = await importPdf(db, body.filename, bytes, body.account_id ?? null, body.ai ?? true);
     return { id, ...batch(id), stats: stats(id) };
   });

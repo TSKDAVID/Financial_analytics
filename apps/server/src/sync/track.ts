@@ -18,6 +18,7 @@ export const SYNC_TABLES: Record<string, { fks: Record<string, string>; label: s
     gid: "CASE WHEN NEW.subscription_id IS NOT NULL THEN 'sbill:' || (SELECT gid FROM subscriptions WHERE id = NEW.subscription_id) || ':' || NEW.due_date WHEN NEW.loan_id IS NOT NULL THEN 'lbill:' || (SELECT gid FROM loans WHERE id = NEW.loan_id) || ':' || NEW.due_date END" },
   budgets: { fks: { category_id: 'categories' }, label: 'category_id', gid: "'budget:' || (SELECT gid FROM categories WHERE id = NEW.category_id)" },
   goals: { fks: { account_id: 'accounts' }, label: 'name' },
+  loan_updates: { fks: { loan_id: 'loans' }, label: 'date' },
 };
 /** Settings that never leave a device. */
 export const LOCAL_SETTINGS = ['deviceId', 'lockHash', 'syncApplying', 'groqKey', 'openaiKey', 'ollamaUrl', 'openaiBaseUrl', 'lastSync', 'desktopNotifications'];

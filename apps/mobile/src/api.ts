@@ -16,7 +16,7 @@ export async function saveConn(c: Conn | null) {
 }
 export class ApiError extends Error { constructor(msg: string, public status: number) { super(msg); } }
 
-export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; conn?: Conn } = {}): Promise<T> {
+export async function remote<T = any>(path: string, opts: { method?: string; body?: unknown; conn?: Conn } = {}): Promise<T> {
   const c = opts.conn ?? (await loadConn());
   if (!c) throw new ApiError('Not paired', 0);
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
