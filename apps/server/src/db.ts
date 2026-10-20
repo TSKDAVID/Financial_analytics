@@ -1,3 +1,4 @@
+import { migrateImports } from './statements/service';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -95,6 +96,7 @@ export function openDb(file?: string): DB {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   seedBuiltins(db);
+  migrateImports(db);
   return db;
 }
 

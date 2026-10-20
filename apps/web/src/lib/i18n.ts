@@ -1,3 +1,4 @@
+import { EN_X, KA_X } from './i18n-extra';
 import { useSyncExternalStore } from 'react';
 
 type Dict = Record<string, string>;
@@ -113,6 +114,7 @@ const ka: Dict = {
   'ins.anomaly': 'უჩვეულო: {description} {amount} ₾, {date} (~{times}× ჩვეულებრივზე მეტი).', 'ins.forecastBelow': 'ყურადღება: ბალანსი {month}-ში {min} ₾-ზე დაბლა ჩამოვა.', 'ins.forecastOk': 'პროგნოზი: {months} თვეში დაახლოებით {amount} ₾.',
   'sc.newTx': 'ახალი ტრანზაქცია', 'sc.search': 'ძებნა', 'sc.goto': 'გვერდზე გადასვლა', 'sc.help': 'მალსახმობები', 'sc.theme': 'თემის შეცვლა',
 };
+Object.assign(en, EN_X); Object.assign(ka, KA_X);
 const DICTS: Record<string, Dict> = { en, ka };
 let lang = localStorage.getItem('fa.lang') ?? 'en';
 const subs = new Set<() => void>();

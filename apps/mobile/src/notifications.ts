@@ -5,7 +5,8 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
-import { api, loadConn } from './api';
+import { api, loadConn, todayISO } from './api';
+import { scheduleReminders } from './reminders';
 
 export const TASK = 'fa-alert-sync';
 const SEEN = 'fa.seenAlerts';
@@ -33,6 +34,7 @@ export async function syncAlerts(): Promise<number> {
   }
   await SecureStore.setItemAsync(SEEN, JSON.stringify([...seen].slice(-400)));
   await Notifications.setBadgeCountAsync(unread).catch(() => undefined);
+  await refreshReminders().catch(() => undefined);
   return n;
 }
 
@@ -57,4 +59,12 @@ export async function setupNotifications(): Promise<{ push: string | null; error
     await api('/devices/me/push', { method: 'PUT', body: { token } });
     return { push: token };
   } catch (e: any) { return { push: null, error: e?.message }; }
+}
+
+/** Pull the next 60 days of unpaid bills/loan payments/subscription charges and (re)schedule local reminders. */
+export async function refreshReminders(): Promise<number> {
+  const from = todayISO(); const d = new Date(); d.setDate(d.getDate() + 60);
+  const to = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const bills = await api<any[]>(`/bills?from=${from}&to=${to}&unpaid=1`);
+  return scheduleReminders(bills);
 }

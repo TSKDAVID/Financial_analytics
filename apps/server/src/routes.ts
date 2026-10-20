@@ -13,6 +13,8 @@ import { evaluateAlerts } from './alerts';
 import { pushAlert } from './notify';
 import * as sec from './security';
 import { seedDemo, resetData } from './seed';
+import { AI_DEFAULTS, SECRET_KEYS } from './statements/ai';
+import { importRoutes } from './statements/routes';
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.coerce.number().finite();
@@ -83,11 +85,13 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   // ---------- settings ----------
   app.get('/api/settings', async () => {
     const rows = db.prepare("SELECT key, value FROM settings WHERE key != 'lockHash'").all() as { key: string; value: string }[];
-    return { ...Object.fromEntries(rows.map((r) => [r.key, r.value])), lockEnabled: sec.lockEnabled(db) };
+    const all: Record<string, unknown> = { ...AI_DEFAULTS, ...Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+    for (const k of SECRET_KEYS) { all[`${k}Set`] = !!all[k]; delete all[k]; } // never return API keys
+    return { ...all, lockEnabled: sec.lockEnabled(db) };
   });
   app.put('/api/settings', async (req) => {
     const body = parse(z.record(z.union([z.string(), z.number(), z.boolean()])), req.body);
-    for (const [k, v] of Object.entries(body)) if (k !== 'lockHash' && k !== 'lockEnabled') setSetting(db, k, String(v));
+    for (const [k, v] of Object.entries(body)) if (k !== 'lockHash' && k !== 'lockEnabled' && !k.endsWith('KeySet')) setSetting(db, k, String(v));
     return { ok: true };
   });
 
@@ -234,12 +238,13 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   });
   crud('subscriptions', 'subscriptions', subSchema, async () => { db.prepare('DELETE FROM bills WHERE subscription_id IS NOT NULL AND paid = 0 AND subscription_id NOT IN (SELECT id FROM subscriptions WHERE active = 1)').run(); await refresh(); });
   app.post('/api/subscriptions/:id/used', async (req) => { db.prepare('UPDATE subscriptions SET last_used = ? WHERE id = ?').run(todayISO(), parse(id, P(req).id)); return { ok: true }; });
+  const withGel = (b: any) => { const rt = latestRates(db); return { ...b, amount_gel: Math.round(b.amount * (b.currency === 'GEL' ? 1 : rt[b.currency] ?? 1) * 100) / 100 }; };
   app.get('/api/bills', async (req) => {
     const q = Q(req); const from = q.from ?? startOfMonth(todayISO()), to = q.to ?? endOfMonth(todayISO());
     return db.prepare(`SELECT b.*, CASE WHEN b.loan_id IS NOT NULL THEN 'loan' ELSE s.kind END AS type, c.color AS category_color FROM bills b LEFT JOIN subscriptions s ON s.id = b.subscription_id LEFT JOIN categories c ON c.id = s.category_id
-      WHERE (b.due_date BETWEEN ? AND ?) ${q.unpaid ? 'AND b.paid = 0' : ''} ORDER BY b.due_date, b.name`).all(from, to);
+      WHERE (b.due_date BETWEEN ? AND ?) ${q.unpaid ? 'AND b.paid = 0' : ''} ORDER BY b.due_date, b.name`).all(from, to).map(withGel);
   });
-  app.get('/api/bills/upcoming', async () => db.prepare("SELECT b.*, CASE WHEN b.loan_id IS NOT NULL THEN 'loan' ELSE s.kind END AS type FROM bills b LEFT JOIN subscriptions s ON s.id = b.subscription_id WHERE b.paid = 0 AND b.due_date <= ? ORDER BY b.due_date LIMIT 50").all(addMonths(todayISO(), 1)));
+  app.get('/api/bills/upcoming', async () => db.prepare("SELECT b.*, CASE WHEN b.loan_id IS NOT NULL THEN 'loan' ELSE s.kind END AS type FROM bills b LEFT JOIN subscriptions s ON s.id = b.subscription_id WHERE b.paid = 0 AND b.due_date <= ? ORDER BY b.due_date LIMIT 50").all(addMonths(todayISO(), 1)).map(withGel));
   app.post('/api/bills/:id/pay', async (req) => { const body = parse(z.object({ date: date.optional(), amount: money.positive().optional(), account_id: optId }).default({}), req.body ?? {}); return payBill(db, parse(id, P(req).id), body); });
   app.post('/api/bills/:id/unpay', async (req) => { unpayBill(db, parse(id, P(req).id)); return { ok: true }; });
   app.get('/api/utilities', async () => utilitiesData(db));
@@ -307,6 +312,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, port: () => number)
   app.post('/api/data/reset', async (req) => { const { confirm } = parse(z.object({ confirm: z.literal('DELETE') }), req.body); void confirm; resetData(db); return { ok: true }; });
   app.get('/api/meta', async () => ({ today: todayISO(), rates: latestRates(db), hasData: (db.prepare('SELECT COUNT(*) AS c FROM transactions').get() as { c: number }).c > 0 || (db.prepare('SELECT COUNT(*) AS c FROM accounts').get() as { c: number }).c > 0, baseCurrency: getSetting(db, 'baseCurrency') ?? 'GEL' }));
   void b; void amortize;
+  importRoutes(app, db);
 }
 
 export function bearer(req: FastifyRequest): string | undefined {

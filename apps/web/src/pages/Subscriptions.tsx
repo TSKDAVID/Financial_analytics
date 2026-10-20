@@ -70,7 +70,7 @@ function BillCalendar() {
   const days = Number(endOfMonth(month).slice(8));
   const cells = [...Array(first).fill(null), ...Array.from({ length: days }, (_, i) => addDays(month, i))];
   const list = bills.data ?? [];
-  const unpaid = list.filter((b) => !b.paid).reduce((s, b) => s + b.amount, 0);
+  const unpaid = list.filter((b) => !b.paid).reduce((s, b) => s + (b.amount_gel ?? b.amount), 0);
   return <Card title={<div className="flex items-center gap-2"><Button size="icon" variant="ghost" onClick={() => setMonth(addMonths(month, -1))}><ChevronLeft className="h-4 w-4" /></Button><span className="w-40 text-center capitalize">{monthFmt(month.slice(0, 7), false)}</span><Button size="icon" variant="ghost" onClick={() => setMonth(addMonths(month, 1))}><ChevronRight className="h-4 w-4" /></Button></div>}
     action={<div className="text-sm text-right"><div className="text-muted-foreground text-xs">{t('common.unpaid')}</div><b className="num">{money(unpaid)}</b></div>}>
     <div className="grid grid-cols-7 gap-1 text-[11px] text-muted-foreground mb-1">{['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => <div key={d} className="text-center">{d}</div>)}</div>

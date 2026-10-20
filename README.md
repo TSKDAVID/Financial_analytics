@@ -118,3 +118,17 @@ API base: `http://localhost:5317/api` (e.g. `/dashboard`, `/transactions`, `/for
 * **`better-sqlite3` install fails on Windows:** use Node 22 LTS x64 (prebuilt binaries are downloaded automatically). Only if it still fails, install "Desktop development with C++" from Visual Studio Build Tools.
 * **Phone can't connect:** check that Tailscale shows both devices as connected, that the desktop app is running, and that the Windows firewall allows Node.js on private networks (accept the prompt on first start).
 * **Rates show "fallback":** you're offline. The last known official rate is used until NBG is reachable again.
+
+## Statement import (PDF)
+
+**Statement import** tab (`g i`): upload a PDF statement from Bank of Georgia, TBC, Liberty (and other Georgian banks), English or Georgian.
+
+- The parser reads the PDF's text layer (pdfjs-dist). It uses a generic line/column heuristic (it detects debit/credit/amount/balance columns, signed amounts and multi-line descriptions) plus small per-bank adapters. Scanned PDFs with no text layer get a clear error.
+- Every row gets a category and a confidence score, in this order: **learned** rules (your past corrections per merchant) → Georgian/English **merchant regex rules** → keywords. When you fix a category, the app remembers it for that merchant and applies it to the other rows from the same merchant.
+- **AI fallback (optional, on by default, local):** only rows below the confidence threshold are sent, and only their description, amount, currency and direction. The default provider is local **Ollama** (`http://localhost:11434`, model `qwen2.5:7b-instruct-q3_K_M`, fallback `qwen2.5:3b`). It uses structured JSON-schema output and sends rows in batches. You can also use any OpenAI-compatible local server (LM Studio, llama.cpp) or Groq (cloud). Configure it in Settings → AI categorisation and use **Test connection** there. If the model is unreachable, the rule-based categories are kept. API keys are stored only in the local DB and are never returned or logged.
+- **Approval workflow:** an import is *staged* in separate tables and changes nothing (dashboard, balances, budgets, forecasts, alerts) until you approve it. You can edit category or account, exclude rows, and see rows flagged as duplicates of existing transactions (same amount, currency, direction and date ±1 day; these are excluded automatically). Approve all rows or only selected ones. Each approved import is a batch: **Revert import** removes exactly its transactions, and you can approve it again later. Import history shows each batch's status.
+- **Analysis:** totals by category, top merchants, recurring/subscription detection, weekday and weekly patterns, and plain-language insights.
+
+## Phone reminders work with the PC off
+
+After every sync, the Android app schedules **local notifications** for all unpaid bills, loan payments and subscription charges in the next 60 days. You get one at 09:00 the day before and one at 09:00 on the due date. They are rescheduled on every sync, so changes on the desktop are picked up. They fire from the phone itself even when the PC is off. Live alerts (budget, risk) still arrive through push and background sync.

@@ -8,3 +8,9 @@ apps/mobile/.expo/
 apps/mobile/android/
 apps/mobile/ios/
 *.apk
+
+# signing keys / private data
+*.keystore
+*.jks
+keystore.properties
+private/

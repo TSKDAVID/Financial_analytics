@@ -8,6 +8,7 @@ import { dateFmt, today } from '../lib/format';
 import { download } from '../lib/sheets';
 import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Spinner, Switch, Tabs, cn, th, td } from '../components/ui';
 import { CurrencySelect } from '../components/pickers';
+import { AiSettings } from '../components/AiSettings';
 
 export default function Settings() {
   const t = useT(); const theme = useTheme();
@@ -23,6 +24,7 @@ export default function Settings() {
       <ShortcutsHint />
     </div></Card>
     <Rates />
+    <AiSettings s={s.data} onSave={save} />
     <Card title={<H icon={Gauge}>{t('set.risk')}</H>}><RiskSettings s={s.data} onSave={save} /></Card>
     <Security lockEnabled={!!s.data.lockEnabled} />
     <Phone s={s.data} onSave={save} />
