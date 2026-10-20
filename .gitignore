@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+*.db
+*.db-*
+.env
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+*.apk

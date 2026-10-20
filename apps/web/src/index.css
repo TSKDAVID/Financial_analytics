@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 33% 98%; --foreground: 224 30% 12%;
+  --card: 0 0% 100%; --card-foreground: 224 30% 12%;
+  --muted: 220 20% 95%; --muted-foreground: 220 10% 46%;
+  --border: 220 16% 90%; --input: 220 16% 88%; --ring: 243 75% 59%;
+  --primary: 243 75% 59%; --primary-foreground: 0 0% 100%;
+  --success: 152 62% 40%; --danger: 0 72% 54%; --warning: 36 92% 50%;
+}
+.dark {
+  --background: 225 25% 7%; --foreground: 220 20% 94%;
+  --card: 225 22% 11%; --card-foreground: 220 20% 94%;
+  --muted: 225 18% 16%; --muted-foreground: 220 10% 62%;
+  --border: 225 16% 19%; --input: 225 16% 22%; --ring: 243 80% 68%;
+  --primary: 243 80% 66%; --primary-foreground: 0 0% 100%;
+  --success: 152 55% 48%; --danger: 0 75% 62%; --warning: 36 92% 56%;
+}
+* { @apply border-border; }
+body { @apply bg-background text-foreground antialiased; font-feature-settings: 'cv11', 'ss01'; }
+.num { font-variant-numeric: tabular-nums; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { @apply bg-muted rounded-full; }
+.recharts-tooltip-wrapper .recharts-default-tooltip { @apply !bg-card !border-border rounded-lg shadow-lg; }

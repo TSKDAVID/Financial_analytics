@@ -1,0 +1,31 @@
+{
+  "name": "financial-analytics",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local-first personal cash-flow manager (web + Android companion)",
+  "workspaces": [
+    "packages/core",
+    "apps/server",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "npm run build -w @fa/web && npm run start -w @fa/server",
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm run dev -w @fa/server\" \"npm run dev -w @fa/web\"",
+    "build": "npm run build -w @fa/web",
+    "test": "npm run test -w @fa/core && npm run test -w @fa/server",
+    "typecheck": "npm run typecheck -w @fa/core && npm run typecheck -w @fa/server && npm run typecheck -w @fa/web",
+    "lint": "eslint .",
+    "seed:demo": "npm run seed -w @fa/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "eslint": "^9.12.0",
+    "typescript-eslint": "^8.8.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "typescript": "~5.6.3"
+  },
+  "type": "module"
+}
